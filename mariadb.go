@@ -20,7 +20,42 @@ const CreateTableBookmarks = `CREATE TABLE IF NOT EXISTS bookmarks (id INT NOT N
 const CreateTableUsers = `CREATE TABLE IF NOT EXISTS users (id INT NOT NULL AUTO_INCREMENT, username VARCHAR(64) NOT NULL, full_name VARCHAR(128) NOT NULL, password VARCHAR(96) NOT NULL, PRIMARY KEY (id))`
 
 // CreateTableSessions is the statement to create the sessions table
-const CreateTableSessions = `CREATE TABLE IF NOT EXISTS sessions (id INT NOT NULL AUTO_INCRMENT, access_token CHAR(32) NOT NULL, user_id INT NOT NULL, creation_date DATETIME NOT NULL, PRIMARY KEY (id))`
+const CreateTableSessions = `CREATE TABLE IF NOT EXISTS sessions (id INT NOT NULL AUTO_INCREMENT, access_token CHAR(32) NOT NULL, user_id INT NOT NULL, creation_date DATETIME NOT NULL, PRIMARY KEY (id))`
+
+// CreateTableContacts is the statement to create the contacts table
+const CreateTableContacts = `CREATE TABLE IF NOT EXISTS contacts (id INT NOT NULL AUTO_INCREMENT, name VARCHAR(256), owner_id INT NOT NULL, PRIMARY KEY (id))`
+
+// CreateTableContactsEmails creates the table for storing a contact's emails
+const CreateTableContactsEmails = `CREATE TABLE IF NOT EXISTS contacts_emails (id INT NOT NULL AUTO_INCREMENT, contact_id INT NOT NULL, address VARCHAR(320), type VARCHAR(32), PRIMARY KEY (id))`
+
+// CreateTableContactsPhones creates the table for storing a contact's phone numbers
+const CreateTableContactsPhones = `CREATE TABLE IF NOT EXISTS contacts_phones (id INT NOT NULL AUTO_INCREMENT, contact_id INT NOT NULL, number VARCHAR(128), type VARCHAR(32), PRIMARY KEY (id))`
+
+// CreateTableContactsIMHandles creates the table for storing a contact's IM handles
+const CreateTableContactsIMHandles = `CREATE TABLE IF NOT EXISTS contacts_im_handles (id INT NOT NULL AUTO_INCREMENT, contact_id INT NOT NULL, identifier VARCHAR(128), protocol VARCHAR(32), type VARCHAR(32), PRIMARY KEY (id))`
+
+// CreateTableContactsOrganization creates the table for storing a contact's organization/association details
+const CreateTableContactsOrganization = `CREATE TABLE IF NOT EXISTS contacts_organization (contact_id INT NOT NULL,
+	company VARCHAR(128),
+	type VARCHAR(32),
+	title VARCHAR(64),
+	department VARCHAR(64),
+	job_description VARCHAR(64),
+	symbol VARCHAR(16),
+	phonetic_name VARCHAR(64),
+	office_location VARCHAR(64), PRIMARY KEY (contact_id))`
+
+// CreateTableContactsRelations creates the table for storing a contact's relations (spouse, children, etc.)
+const CreateTableContactsRelations = `CREATE TABLE IF NOT EXISTS contacts_relations (id INT NOT NULL AUTO_INCREMENT, contact_id INT NOT NULL, name VARCHAR(128), type VARCHAR(32), PRIMARY KEY (id))`
+
+// CreateTableContactsPostalAddresses creates the table for storing a contact's postal addresses
+const CreateTableContactsPostalAddresses = `CREATE TABLE IF NOT EXISTS contacts_postal_addresses (id INT NOT NULL AUTO_INCREMENT, contact_id INT NOT NULL, street VARCHAR(256), po_box VARCHAR(16), neighborhood VARCHAR(128), city VARCHAR(128), region VARCHAR(128), post_code VARCHAR(16), country VARCHAR(96), type VARCHAR(32), PRIMARY KEY(id))`
+
+// CreateTableContactsWebsites creates the table for storing a contact's websites
+const CreateTableContactsWebsites = `CREATE TABLE IF NOT EXISTS contacts_websites (id INT NOT NULL AUTO_INCREMENT, contact_id INT NOT NULL, address VARCHAR(2048), type VARCHAR(32), PRIMARY KEY (id))`
+
+// CreateTableContactsEvents creates the table for storing a contact's events
+const CreateTableContactsEvents = `CREATE TABLE IF NOT EXISTS contacts_events (id INT NOT NULL AUTO_INCREMENT, contact_id INT NOT NULL, start_date VARCHAR(48), type VARCHAR(32), PRIMARY KEY (id))`
 
 // NewMariaDB returns a NewtonDB instance that is backed by a MariaDB instance described
 // in the dsn.
@@ -85,25 +120,43 @@ func updateMariaDBVersion(mdb *MariaNewtonDB) error {
 	return nil
 }
 
+type errTableCreator struct {
+	tx  *sqlx.Tx
+	err error
+}
+
+func (etc *errTableCreator) exec(query string) {
+	if etc.err != nil {
+		return
+	}
+
+	_, etc.err = etc.tx.Exec(query)
+}
+
 func migrateMariaDBFrom0To1(mdb *MariaNewtonDB) error {
-	tx, err := mdb.db.Begin()
+	tx, err := mdb.db.Beginx()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
 	// create all our tables
-	_, err = tx.Exec(CreateTableBookmarks)
-	if err != nil {
-		return err
-	}
-	_, err = tx.Exec(CreateTableUsers)
-	if err != nil {
-		return err
-	}
-	_, err = tx.Exec(CreateTableSessions)
-	if err != nil {
-		return err
+	creator := errTableCreator{tx: tx}
+	creator.exec(CreateTableBookmarks)
+	creator.exec(CreateTableUsers)
+	creator.exec(CreateTableSessions)
+	creator.exec(CreateTableContacts)
+	creator.exec(CreateTableContactsEmails)
+	creator.exec(CreateTableContactsPhones)
+	creator.exec(CreateTableContactsIMHandles)
+	creator.exec(CreateTableContactsOrganization)
+	creator.exec(CreateTableContactsRelations)
+	creator.exec(CreateTableContactsPostalAddresses)
+	creator.exec(CreateTableContactsWebsites)
+	creator.exec(CreateTableContactsEvents)
+
+	if creator.err != nil {
+		return creator.err
 	}
 
 	// update the version
@@ -123,13 +176,8 @@ type MariaNewtonDB struct {
 
 // CreateBookmark creates a bookmark
 func (mdb *MariaNewtonDB) CreateBookmark(bookmark *Bookmark) (int64, error) {
-	const insertSQL = `INSERT INTO bookmarks (url, title, user_id) VALUES (:url, :title, :user_id)`
-	query, args, err := sqlx.Named(insertSQL, bookmark)
-	if err != nil {
-		return -1, err
-	}
-
-	result, err := mdb.db.Exec(query, args...)
+	const insertSQL = `INSERT INTO bookmarks (url, title, owner_id) VALUES (:url, :title, :owner_id)`
+	result, err := sqlx.NamedExec(mdb.db, insertSQL, bookmark)
 	if err != nil {
 		return -1, err
 	}
@@ -139,7 +187,7 @@ func (mdb *MariaNewtonDB) CreateBookmark(bookmark *Bookmark) (int64, error) {
 
 // Bookmark retrieves a bookmark by its id
 func (mdb *MariaNewtonDB) Bookmark(id int64) (*Bookmark, error) {
-	const selectSQL = `SELECT id, url, title, user_id FROM bookmarks WHERE id=?`
+	const selectSQL = `SELECT id, url, title, owner_id FROM bookmarks WHERE id=?`
 	bookmark := &Bookmark{}
 	err := mdb.db.QueryRowx(selectSQL, id).StructScan(bookmark)
 	if err != nil {
@@ -175,8 +223,9 @@ func (mdb *MariaNewtonDB) DeleteBookmark(id int64) error {
 }
 
 // Bookmarks retrieves a list of bookmarks according to the specified arguments
-func (mdb *MariaNewtonDB) Bookmarks(filters map[string]interface{}, pageSize int, page int) ([]*Bookmark, error) {
-	builder := squirrel.Select("bookmarks.id, bookmarks.url, bookmarks.title, bookmarks.user_id").From("bookmarks")
+func (mdb *MariaNewtonDB) Bookmarks(userID int64, pageSize int, page int) ([]*Bookmark, error) {
+	builder := squirrel.Select("id, url, title, owner_id").From("bookmarks")
+	builder = builder.Where(squirrel.Eq{"owner_id": userID})
 	if pageSize > 0 {
 		builder = builder.Limit(uint64(pageSize))
 	}
@@ -205,8 +254,8 @@ func (mdb *MariaNewtonDB) Bookmarks(filters map[string]interface{}, pageSize int
 
 // EditBookmark edits an existing bookmark
 func (mdb *MariaNewtonDB) EditBookmark(bookmark *Bookmark) error {
-	const editSQL = `UPDATE bookmarks SET url=?, title=? WHERE id=?`
-	_, err := mdb.db.Exec(editSQL, bookmark.URL, bookmark.Title, bookmark.ID)
+	const editSQL = `UPDATE bookmarks SET url=:url, title=:title WHERE id=:id`
+	_, err := mdb.db.NamedExec(editSQL, bookmark)
 	return err
 }
 
@@ -297,4 +346,121 @@ func (mdb *MariaNewtonDB) SessionByAccessToken(token string) (*Session, error) {
 	default:
 		return nil, err
 	}
+}
+
+// CreateContact persists a contact
+func (mdb *MariaNewtonDB) CreateContact(contact *Contact) (int64, error) {
+	const insertSQL = `INSERT INTO contacts (name, owner_id) VALUES (:name, :owner_id)`
+
+	tx, err := mdb.db.Beginx()
+	if err != nil {
+		return -1, err
+	}
+	defer tx.Rollback()
+
+	result, err := sqlx.NamedExec(tx, insertSQL, contact)
+	if err != nil {
+		return -1, err
+	}
+	contactID, err := result.LastInsertId()
+	if err != nil {
+		return -1, err
+	}
+
+	// populate any emails in there
+	const insertEmailSQL = `INSERT INTO contacts_emails (contact_id, address, type) VALUES (?, ?, ?)`
+	for _, email := range contact.Emails {
+		_, err = tx.Exec(insertEmailSQL, contactID, email.Address, email.Type)
+		if err != nil {
+			return -1, err
+		}
+	}
+
+	// add the phone numbers
+	const insertPhoneSQL = `INSERT INTO contacts_phones (contact_id, number, type) VALUES (?, ?, ?)`
+	for _, phone := range contact.Phones {
+		_, err = tx.Exec(insertPhoneSQL, contactID, phone.Number, phone.Type)
+		if err != nil {
+			return -1, err
+		}
+	}
+
+	// add the IM handles
+	const insertIMHandleSQL = `INSERT INTO contacts_im_handles (contact_id, identifier, protocol, type) VALUES (?, ?, ?, ?)`
+	for _, imHandle := range contact.IMHandles {
+		_, err = tx.Exec(insertIMHandleSQL, contactID, imHandle.Identifier, imHandle.Protocol, imHandle.Type)
+		if err != nil {
+			return -1, err
+		}
+	}
+
+	// add the Organization details
+	if contact.Org != nil {
+		const insertOrgSQL = `INSERT INTO contacts_organization (contact_id, company, type, title, department, job_description, symbol, phonetic_name, office_location) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		_, err = tx.Exec(insertOrgSQL,
+			contactID,
+			contact.Org.Company,
+			contact.Org.Type,
+			contact.Org.Title,
+			contact.Org.Department,
+			contact.Org.JobDescription,
+			contact.Org.Symbol,
+			contact.Org.PhoneticName,
+			contact.Org.OfficeLocation)
+		if err != nil {
+			return -1, err
+		}
+	}
+
+	// add the contact's relations
+	const insertRelationSQL = `INSERT INTO contacts_relations (contact_id, name, type) VALUES (?, ?,?)`
+	for _, relation := range contact.Relations {
+		_, err = tx.Exec(insertRelationSQL, contactID, relation.Name, relation.Type)
+		if err != nil {
+			return -1, err
+		}
+	}
+
+	// add postal addresses
+	const insertAddressSQL = `INSERT INTO contacts_postal_addresses (contact_id, street, po_box, neighborhood, city, region, post_code, country, type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	for _, address := range contact.PostalAddresses {
+		_, err = tx.Exec(insertAddressSQL,
+			contactID,
+			address.Street,
+			address.POBox,
+			address.Neighborhood,
+			address.City,
+			address.Region,
+			address.PostCode,
+			address.Country,
+			address.Type)
+		if err != nil {
+			return -1, err
+		}
+	}
+
+	// add websites
+	const insertWebsiteSQL = `INSERT INTO contacts_websites (contact_id, address, type) VALUES (?, ?, ?)`
+	for _, site := range contact.Websites {
+		_, err = tx.Exec(insertWebsiteSQL, contactID, site.Address, site.Type)
+		if err != nil {
+			return -1, err
+		}
+	}
+
+	// add events
+	const insertEventSQL = `INSERT INTO contacts_events (contact_id, start_date, type) VALUES (?, ?, ?)`
+	for _, event := range contact.Events {
+		_, err = tx.Exec(insertEventSQL, contactID, event.StartDate, event.Type)
+		if err != nil {
+			return -1, err
+		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return -1, err
+	}
+
+	return contactID, nil
 }

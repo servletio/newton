@@ -11,10 +11,10 @@ import (
 
 // Session contains the fields used in managing a user's authentication
 type Session struct {
-	ID           *int64
-	AccessToken  *string
-	UserID       *int64
-	CreationDate *time.Time
+	ID           *int64     `json:"id,omitempty"db:"id"`
+	AccessToken  *string    `json:"access_token,omitempty"db:"access_token"`
+	UserID       *int64     `json:"user_id,omitempty"db:"user_id"`
+	CreationDate *time.Time `json:"creation_date,omitempty"db:"creation_date"`
 }
 
 // NewSession creates a session, and generates an access token and creation date
@@ -33,16 +33,18 @@ func authenticate(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	accessToken := args.Get("access_token")
 	token := strings.TrimSpace(accessToken)
 	if token == "" {
+		sendUnauthorized(w, "you need to be logged in to continue")
 		return 0, false
 	}
 
 	session, err := db().SessionByAccessToken(token)
 	if err != nil {
-		logErr(err)
+		sendInternalErr(w, err)
 		return 0, false
 	}
 
 	if session == nil {
+		sendUnauthorized(w, "you need to be logged in to continue")
 		return 0, false
 	}
 

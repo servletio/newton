@@ -6,7 +6,7 @@ var gDatabase NewtonDB
 type NewtonDB interface {
 	Bookmark(id int64) (*Bookmark, error)
 	BookmarkExists(id int64) (bool, error)
-	Bookmarks(filters map[string]interface{}, pageSize int, page int) ([]*Bookmark, error)
+	Bookmarks(userID int64, pageSize int, page int) ([]*Bookmark, error)
 	CreateBookmark(bookmark *Bookmark) (int64, error)
 	DeleteBookmark(id int64) error
 	EditBookmark(bookmark *Bookmark) error
@@ -19,6 +19,8 @@ type NewtonDB interface {
 
 	CreateSession(session *Session) (int64, error)
 	SessionByAccessToken(token string) (*Session, error)
+
+	CreateContact(contact *Contact) (int64, error)
 }
 
 // InitDB initializes the database that backs the API

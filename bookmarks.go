@@ -55,6 +55,11 @@ func parseBookmarkID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 
 // CreateBookmarkHandler handles POST /bookmarks
 func CreateBookmarkHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authenticate(w, r)
+	if !ok {
+		return
+	}
+
 	decoder := json.NewDecoder(r.Body)
 	bookmark := &Bookmark{}
 	err := decoder.Decode(bookmark)
@@ -68,6 +73,7 @@ func CreateBookmarkHandler(w http.ResponseWriter, r *http.Request) {
 		sendBadReq(w, "You need to provide a 'url'")
 		return
 	}
+	bookmark.OwnerID = &userID
 
 	id, err := db().CreateBookmark(bookmark)
 	if err != nil {
@@ -80,18 +86,28 @@ func CreateBookmarkHandler(w http.ResponseWriter, r *http.Request) {
 
 // GetBookmarksHandler handles GET /bookmarks
 func GetBookmarksHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authenticate(w, r)
+	if !ok {
+		return
+	}
+
 	page, pageSize, err := pageAndSize(r.URL.Query(), 10)
 	if err != nil {
 		sendBadReq(w, err.Error())
 		return
 	}
 
-	bookmarks, err := db().Bookmarks(nil, pageSize, page)
+	bookmarks, err := db().Bookmarks(userID, pageSize, page)
 	sendSuccess(w, bookmarks)
 }
 
 // GetBookmarkHandler handles GET /bookmarks/{bookmark_id}
 func GetBookmarkHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authenticate(w, r)
+	if !ok {
+		return
+	}
+
 	bookmarkID, ok := parseBookmarkID(w, r)
 	if !ok {
 		return
@@ -100,6 +116,11 @@ func GetBookmarkHandler(w http.ResponseWriter, r *http.Request) {
 	bookmark, err := db().Bookmark(bookmarkID)
 	if err != nil {
 		sendInternalErr(w, err)
+		return
+	}
+
+	if *bookmark.OwnerID != userID {
+		sendNotFound(w, "bookmark not found")
 		return
 	}
 
@@ -108,6 +129,11 @@ func GetBookmarkHandler(w http.ResponseWriter, r *http.Request) {
 
 // EditBookmarkHandler handles PUT /bookmarks/{bookmark_id}
 func EditBookmarkHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authenticate(w, r)
+	if !ok {
+		return
+	}
+
 	bookmarkID, ok := parseBookmarkID(w, r)
 	if !ok {
 		return
@@ -118,7 +144,10 @@ func EditBookmarkHandler(w http.ResponseWriter, r *http.Request) {
 		sendInternalErr(w, err)
 		return
 	}
-	bookmarkOwnerID := bookmark.OwnerID
+	if *bookmark.OwnerID != userID {
+		sendNotFound(w, "bookmark not found")
+		return
+	}
 
 	dec := json.NewDecoder(r.Body)
 	if err = dec.Decode(bookmark); err != nil {
@@ -126,8 +155,8 @@ func EditBookmarkHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bookmark.ID = &bookmarkID
-	bookmark.OwnerID = bookmarkOwnerID
+	bookmark.ID = &bookmarkID // to make sure they didn't try to replace the id
+	bookmark.OwnerID = &userID
 	if err = db().EditBookmark(bookmark); err != nil {
 		sendInternalErr(w, err)
 		return

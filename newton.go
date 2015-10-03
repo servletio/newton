@@ -27,6 +27,15 @@ func main() {
 	v1Router := r.PathPrefix("/1").Subrouter()
 	installEndpoints(v1Router)
 
+	amap := map[string]interface{}{
+		"user_id": int64(3939),
+	}
+	if userID, ok := amap["user_id"].(int64); ok {
+		log.Printf("user is ok %d", userID)
+	} else {
+		log.Printf("no user_id found")
+	}
+
 	server := &http.Server{
 		Addr:         ":5555",
 		Handler:      r,
