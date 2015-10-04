@@ -1,6 +1,14 @@
 package main
 
-import "net/http"
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"strconv"
+
+	"github.com/gorilla/mux"
+)
 
 // Email ...
 type Email struct {
@@ -42,12 +50,12 @@ func NewIMHandle(identifier, protocol, imType string) *IMHandle {
 
 // Organization ...
 type Organization struct {
-	Company        *string `json:"company,omitempty"db:"company"`
-	Type           *string `json:"type,omitempty"db:"type"`
-	Title          *string `json:"title,omitempty"db:"title"`
-	Department     *string `json:"department,omitempty"db:"department"`
+	Company        *string `json:"company,omitempty"`
+	Type           *string `json:"type,omitempty"`
+	Title          *string `json:"title,omitempty"`
+	Department     *string `json:"department,omitempty"`
 	JobDescription *string `json:"job_description,omitempty"db:"job_description"`
-	Symbol         *string `json:"symbol,omitempty"db:"symbol"`
+	Symbol         *string `json:"symbol,omitempty"`
 	PhoneticName   *string `json:"phonetic_name,omitempty"db:"phonetic_name"`
 	OfficeLocation *string `json:"office_location,omitempty"db:"office_location"`
 }
@@ -66,11 +74,11 @@ func NewRelation(name, relationType string) *Relation {
 // PostalAddress ...
 type PostalAddress struct {
 	Street       *string `json:"street,omitempty"`
-	POBox        *string `json:"po_box,omitempty"`
+	POBox        *string `json:"po_box,omitempty"db:"po_box"`
 	Neighborhood *string `json:"neighborhood,omitempty"`
 	City         *string `json:"city,omitempty"`
 	Region       *string `json:"region,omitempty"`
-	PostCode     *string `json:"post_code,omitempty"`
+	PostCode     *string `json:"post_code,omitempty"db:"post_code"`
 	Country      *string `json:"country,omitempty"`
 	Type         *string `json:"type,omitempty"`
 }
@@ -102,7 +110,7 @@ func NewWebsite(address, siteType string) *Website {
 
 // Event ...
 type Event struct {
-	StartDate *string `json:"start_date,omitempty"`
+	StartDate *string `json:"start_date,omitempty"db:"start_date"`
 	Type      *string `json:"type,omitempty"`
 }
 
@@ -113,8 +121,8 @@ func NewEvent(startDate, eventType string) *Event {
 
 // Contact ...
 type Contact struct {
-	OwnerID         *int64           `json:"owner_id,omitempty"db:"owner_id"`
-	Name            *string          `json:"name,omitempty"db:"name"`
+	ID              *int64           `json:"id,omitempty"`
+	Name            *string          `json:"name,omitempty"`
 	Emails          []*Email         `json:"emails,omitempty"db:"-"`
 	Phones          []*Phone         `json:"phones,omitempty"db:"-"`
 	IMHandles       []*IMHandle      `json:"im_handles,omitempty"db:"-"`
@@ -123,9 +131,118 @@ type Contact struct {
 	PostalAddresses []*PostalAddress `json:"postal_addresses,omitempty"db:"-"`
 	Websites        []*Website       `json:"websites,omitempty"db:"-"`
 	Events          []*Event         `json:"events,omitempty"db:"-"`
+	OwnerID         *int64           `json:"owner_id,omitempty"db:"owner_id"`
+}
+
+func parseContactID(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	vars := mux.Vars(r)
+	idStr := vars["contact_id"]
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		sendBadReq(w, "invalid contact id")
+		return 0, false
+	}
+	exists, err := db().ContactExists(id)
+	if err != nil {
+		sendInternalErr(w, err)
+		return 0, false
+	}
+	if !exists {
+		sendNotFound(w, fmt.Sprintf("contact %d not found", id))
+		return 0, false
+	}
+
+	return id, true
 }
 
 // CreateContactHandler handles POST /contacts
 func CreateContactHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authenticate(w, r)
+	if !ok {
+		return
+	}
 
+	dec := json.NewDecoder(r.Body)
+	contact := &Contact{}
+	err := dec.Decode(contact)
+	if err != nil {
+		sendBadReq(w, "unable to decode the request json")
+		return
+	}
+	// we shouldn't be using any id received from the POST body
+	contact.ID = nil
+
+	contact.OwnerID = &userID
+	var contactID int64
+	contactID, err = db().CreateContact(contact)
+	if err != nil {
+		sendInternalErr(w, err)
+		return
+	}
+	contact.ID = &contactID
+	sendSuccess(w, contact)
+}
+
+// GetContactsHandler handles GET /contacts
+func GetContactsHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authenticate(w, r)
+	if !ok {
+		return
+	}
+
+	contacts, err := db().Contacts(userID)
+	if err != nil {
+		sendInternalErr(w, err)
+		return
+	}
+
+	sendSuccess(w, contacts)
+}
+
+// GetContactHandler handles GET /contacts/{contact_id}
+func GetContactHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authenticate(w, r)
+	if !ok {
+		return
+	}
+
+	contactID, ok := parseContactID(w, r)
+	if !ok {
+		return
+	}
+
+	contact, err := db().Contact(contactID, userID)
+	if err != nil {
+		sendInternalErr(w, err)
+		return
+	}
+
+	if *contact.OwnerID != userID {
+		sendNotFound(w, "contact not found")
+		return
+	}
+
+	sendSuccess(w, contact)
+}
+
+// DeleteContactHandler handles DELETE /contacts/{contact_id}
+func DeleteContactHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authenticate(w, r)
+	if !ok {
+		return
+	}
+
+	contactID, ok := parseContactID(w, r)
+	if !ok {
+		return
+	}
+	log.Printf("Delete contact %d", contactID)
+
+	err := db().DeleteContact(contactID, userID)
+	if err != nil {
+		sendInternalErr(w, err)
+		return
+	}
+
+	sendSuccess(w, nil)
 }

@@ -113,7 +113,7 @@ func GetBookmarkHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bookmark, err := db().Bookmark(bookmarkID)
+	bookmark, err := db().Bookmark(bookmarkID, userID)
 	if err != nil {
 		sendInternalErr(w, err)
 		return
@@ -139,7 +139,7 @@ func EditBookmarkHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bookmark, err := db().Bookmark(bookmarkID)
+	bookmark, err := db().Bookmark(bookmarkID, userID)
 	if err != nil {
 		sendInternalErr(w, err)
 		return
@@ -167,12 +167,17 @@ func EditBookmarkHandler(w http.ResponseWriter, r *http.Request) {
 
 // DeleteBookmarkHandler handles DELETE /bookmarks/{bookmark_id}
 func DeleteBookmarkHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authenticate(w, r)
+	if !ok {
+		return
+	}
+
 	bookmarkID, ok := parseBookmarkID(w, r)
 	if !ok {
 		return
 	}
 
-	if err := db().DeleteBookmark(bookmarkID); err != nil {
+	if err := db().DeleteBookmark(bookmarkID, userID); err != nil {
 		sendInternalErr(w, err)
 		return
 	}

@@ -27,15 +27,6 @@ func main() {
 	v1Router := r.PathPrefix("/1").Subrouter()
 	installEndpoints(v1Router)
 
-	amap := map[string]interface{}{
-		"user_id": int64(3939),
-	}
-	if userID, ok := amap["user_id"].(int64); ok {
-		log.Printf("user is ok %d", userID)
-	} else {
-		log.Printf("no user_id found")
-	}
-
 	server := &http.Server{
 		Addr:         ":5555",
 		Handler:      r,
@@ -59,6 +50,11 @@ func installEndpoints(router *mux.Router) {
 	router.Handle("/bookmarks/{bookmark_id}", NewtonFunc(GetBookmarkHandler)).Methods("GET")
 	router.Handle("/bookmarks/{bookmark_id}", NewtonFunc(EditBookmarkHandler)).Methods("PUT")
 	router.Handle("/bookmarks/{bookmark_id}", NewtonFunc(DeleteBookmarkHandler)).Methods("DELETE")
+
+	router.Handle("/contacts", NewtonFunc(CreateContactHandler)).Methods("POST")
+	router.Handle("/contacts", NewtonFunc(GetContactsHandler)).Methods("GET")
+	router.Handle("/contacts/{contact_id}", NewtonFunc(GetContactHandler)).Methods("GET")
+	router.Handle("/contacts/{contact_id}", NewtonFunc(DeleteContactHandler)).Methods("DELETE")
 }
 
 func corsHandler(w http.ResponseWriter, r *http.Request) {

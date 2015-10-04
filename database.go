@@ -4,11 +4,11 @@ var gDatabase NewtonDB
 
 // NewtonDB is an abstraction of all the methods necessary for a database provider to implement
 type NewtonDB interface {
-	Bookmark(id int64) (*Bookmark, error)
+	Bookmark(bookmarkID, ownerID int64) (*Bookmark, error)
 	BookmarkExists(id int64) (bool, error)
-	Bookmarks(userID int64, pageSize int, page int) ([]*Bookmark, error)
+	Bookmarks(ownerID int64, pageSize int, page int) ([]*Bookmark, error)
 	CreateBookmark(bookmark *Bookmark) (int64, error)
-	DeleteBookmark(id int64) error
+	DeleteBookmark(bookmarkID, ownerID int64) error
 	EditBookmark(bookmark *Bookmark) error
 
 	User(id int64) (*User, error)
@@ -21,6 +21,10 @@ type NewtonDB interface {
 	SessionByAccessToken(token string) (*Session, error)
 
 	CreateContact(contact *Contact) (int64, error)
+	ContactExists(id int64) (bool, error)
+	Contact(contactID, ownerID int64) (*Contact, error)
+	Contacts(ownerID int64) ([]*Contact, error)
+	DeleteContact(contactID, ownerID int64) error
 }
 
 // InitDB initializes the database that backs the API

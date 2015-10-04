@@ -120,17 +120,17 @@ func updateMariaDBVersion(mdb *MariaNewtonDB) error {
 	return nil
 }
 
-type errTableCreator struct {
+type errExecer struct {
 	tx  *sqlx.Tx
 	err error
 }
 
-func (etc *errTableCreator) exec(query string) {
-	if etc.err != nil {
+func (ee *errExecer) exec(query string, args ...interface{}) {
+	if ee.err != nil {
 		return
 	}
 
-	_, etc.err = etc.tx.Exec(query)
+	_, ee.err = ee.tx.Exec(query, args...)
 }
 
 func migrateMariaDBFrom0To1(mdb *MariaNewtonDB) error {
@@ -141,7 +141,7 @@ func migrateMariaDBFrom0To1(mdb *MariaNewtonDB) error {
 	defer tx.Rollback()
 
 	// create all our tables
-	creator := errTableCreator{tx: tx}
+	creator := errExecer{tx: tx}
 	creator.exec(CreateTableBookmarks)
 	creator.exec(CreateTableUsers)
 	creator.exec(CreateTableSessions)
@@ -186,10 +186,10 @@ func (mdb *MariaNewtonDB) CreateBookmark(bookmark *Bookmark) (int64, error) {
 }
 
 // Bookmark retrieves a bookmark by its id
-func (mdb *MariaNewtonDB) Bookmark(id int64) (*Bookmark, error) {
-	const selectSQL = `SELECT id, url, title, owner_id FROM bookmarks WHERE id=?`
+func (mdb *MariaNewtonDB) Bookmark(bookmarkID, ownerID int64) (*Bookmark, error) {
+	const selectSQL = `SELECT id, url, title, owner_id FROM bookmarks WHERE id=? AND owner_id=?`
 	bookmark := &Bookmark{}
-	err := mdb.db.QueryRowx(selectSQL, id).StructScan(bookmark)
+	err := mdb.db.QueryRowx(selectSQL, bookmarkID, ownerID).StructScan(bookmark)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -216,16 +216,16 @@ func (mdb *MariaNewtonDB) BookmarkExists(id int64) (bool, error) {
 }
 
 // DeleteBookmark deletes a bookmark with the specified id
-func (mdb *MariaNewtonDB) DeleteBookmark(id int64) error {
-	const deleteSQL = `DELETE FROM bookmarks WHERE id=?`
-	_, err := mdb.db.Exec(deleteSQL, id)
+func (mdb *MariaNewtonDB) DeleteBookmark(bookmarkID, ownerID int64) error {
+	const deleteSQL = `DELETE FROM bookmarks WHERE id=? AND owner_id=?`
+	_, err := mdb.db.Exec(deleteSQL, bookmarkID, ownerID)
 	return err
 }
 
 // Bookmarks retrieves a list of bookmarks according to the specified arguments
-func (mdb *MariaNewtonDB) Bookmarks(userID int64, pageSize int, page int) ([]*Bookmark, error) {
+func (mdb *MariaNewtonDB) Bookmarks(ownerID int64, pageSize int, page int) ([]*Bookmark, error) {
 	builder := squirrel.Select("id, url, title, owner_id").From("bookmarks")
-	builder = builder.Where(squirrel.Eq{"owner_id": userID})
+	builder = builder.Where(squirrel.Eq{"owner_id": ownerID})
 	if pageSize > 0 {
 		builder = builder.Limit(uint64(pageSize))
 	}
@@ -463,4 +463,212 @@ func (mdb *MariaNewtonDB) CreateContact(contact *Contact) (int64, error) {
 	}
 
 	return contactID, nil
+}
+
+// ContactExists ...
+func (mdb *MariaNewtonDB) ContactExists(id int64) (bool, error) {
+	const existsSQL = `SELECT id FROM contacts WHERE id=?`
+	var foundID int64
+	err := mdb.db.QueryRowx(existsSQL, id).Scan(&foundID)
+	switch err {
+	case nil:
+		return true, nil
+	case sql.ErrNoRows:
+		return false, nil
+	default:
+		return false, err
+	}
+}
+
+// Contact ...
+func (mdb *MariaNewtonDB) Contact(contactID, ownerID int64) (*Contact, error) {
+	const contactSQL = `SELECT id, name, owner_id FROM contacts WHERE id=? AND owner_id=?`
+	contact := &Contact{}
+	err := mdb.db.Get(contact, contactSQL, contactID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// get the emails
+	const emailsSQL = `SELECT address, type FROM contacts_emails WHERE contact_id=?`
+	rows, err := mdb.db.Queryx(emailsSQL, contact.ID)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		email := &Email{}
+		err = rows.StructScan(email)
+		if err != nil {
+			return nil, err
+		}
+		contact.Emails = append(contact.Emails, email)
+	}
+
+	// get the phone numbers
+	const phonesSQL = `SELECT number, type FROM contacts_phones WHERE contact_id=?`
+	rows, err = mdb.db.Queryx(phonesSQL, contact.ID)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		phone := &Phone{}
+		err = rows.StructScan(phone)
+		if err != nil {
+			return nil, err
+		}
+		contact.Phones = append(contact.Phones, phone)
+	}
+
+	// get the IM handles
+	const imHandlesSQL = `SELECT identifier, protocol, type FROM contacts_im_handles WHERE contact_id=?`
+	rows, err = mdb.db.Queryx(imHandlesSQL, contact.ID)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		imHandle := &IMHandle{}
+		err = rows.StructScan(imHandle)
+		if err != nil {
+			return nil, err
+		}
+		contact.IMHandles = append(contact.IMHandles, imHandle)
+	}
+
+	// retrieve any organization details
+	const orgSQL = `SELECT company, type, title, department, job_description, symbol, phonetic_name, office_location FROM contacts_organization WHERE contact_id=?`
+	org := &Organization{}
+	err = mdb.db.QueryRowx(orgSQL, contact.ID).StructScan(org)
+	switch err {
+	case nil:
+		contact.Org = org
+		fallthrough
+	case sql.ErrNoRows:
+	default:
+		return nil, err
+	}
+
+	// retrieve the relations
+	const relationsSQL = `SELECT name, type FROM contacts_relations WHERE contact_id=?`
+	rows, err = mdb.db.Queryx(relationsSQL, contact.ID)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		relation := &Relation{}
+		err = rows.StructScan(relation)
+		if err != nil {
+			return nil, err
+		}
+		contact.Relations = append(contact.Relations, relation)
+	}
+
+	// retrieve postal addresses
+	const postalsSQL = `SELECT street, po_box, neighborhood, city, region, post_code, country, type FROM contacts_postal_addresses WHERE contact_id=?`
+	rows, err = mdb.db.Queryx(postalsSQL, contact.ID)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		postal := &PostalAddress{}
+		err = rows.StructScan(postal)
+		if err != nil {
+			return nil, err
+		}
+		contact.PostalAddresses = append(contact.PostalAddresses, postal)
+	}
+
+	// websites
+	const sitesSQL = `SELECT address, type FROM contacts_websites WHERE contact_id=?`
+	rows, err = mdb.db.Queryx(sitesSQL, contact.ID)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		site := &Website{}
+		err = rows.StructScan(site)
+		if err != nil {
+			return nil, err
+		}
+		contact.Websites = append(contact.Websites, site)
+	}
+
+	// events
+	const eventsSQL = `SELECT start_date, type FROM contacts_events WHERE contact_id=?`
+	rows, err = mdb.db.Queryx(eventsSQL, contact.ID)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		event := &Event{}
+		err = rows.StructScan(event)
+		if err != nil {
+			return nil, err
+		}
+		contact.Events = append(contact.Events, event)
+	}
+
+	return contact, nil
+}
+
+// Contacts ...
+func (mdb *MariaNewtonDB) Contacts(ownerID int64) ([]*Contact, error) {
+	// get the ids of all our contacts, then retrieve them using Contact()
+	const contactIDsSQL = `SELECT id FROM contacts WHERE owner_id=?`
+	rows, err := mdb.db.Queryx(contactIDsSQL, ownerID)
+	if err != nil {
+		return nil, err
+	}
+
+	var contactID int64
+	contacts := make([]*Contact, 0, 0)
+	for rows.Next() {
+		err = rows.Scan(&contactID)
+		if err != nil {
+			return nil, err
+		}
+		c, err := mdb.Contact(contactID, ownerID)
+		if err != nil {
+			return nil, err
+		}
+		contacts = append(contacts, c)
+	}
+
+	return contacts, nil
+}
+
+// DeleteContact ...
+func (mdb *MariaNewtonDB) DeleteContact(contactID, ownerID int64) error {
+	tx, err := mdb.db.Beginx()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// make sure the contact has the same owner id
+	const selectSQL = `SELECT id FROM contacts WHERE id=? AND owner_id=?`
+	var foundID int64
+	err = tx.QueryRowx(selectSQL, contactID, ownerID).Scan(&foundID)
+	if err != nil {
+		return err
+	}
+
+	deleter := errExecer{tx: tx}
+	deleter.exec("DELETE FROM contacts WHERE id=?", contactID)
+	deleter.exec("DELETE FROM contacts_emails WHERE contact_id=?", contactID)
+	deleter.exec("DELETE FROM contacts_phones WHERE contact_id=?", contactID)
+	deleter.exec("DELETE FROM contacts_im_handles WHERE contact_id=?", contactID)
+	deleter.exec("DELETE FROM contacts_organization WHERE contact_id=?", contactID)
+	deleter.exec("DELETE FROM contacts_relations WHERE contact_id=?", contactID)
+	deleter.exec("DELETE FROM contacts_postal_addresses WHERE contact_id=?", contactID)
+	deleter.exec("DELETE FROM contacts_websites WHERE contact_id=?", contactID)
+	deleter.exec("DELETE FROM contacts_events WHERE contact_id=?", contactID)
+	if deleter.err != nil {
+		return err
+	}
+	err = tx.Commit()
+
+	return err
 }

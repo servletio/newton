@@ -132,7 +132,7 @@ func TestCreateBookmark(t *testing.T) {
 }
 
 func TestRetrieveBookmark(t *testing.T) {
-	retrieved, err := db().Bookmark(*bookmarkObject.ID)
+	retrieved, err := db().Bookmark(*bookmarkObject.ID, newUserID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestEditBookmark(t *testing.T) {
 	}
 
 	// retrieve it and make sure the fields match
-	retrieved, err := db().Bookmark(*bookmarkObject.ID)
+	retrieved, err := db().Bookmark(*bookmarkObject.ID, newUserID)
 	if err != nil {
 		t.Fatalf("unable to retrieve bookmark while verifying that the edit stuck")
 	}
@@ -186,12 +186,12 @@ func TestEditBookmark(t *testing.T) {
 }
 
 func TestDeleteBookmark(t *testing.T) {
-	err := db().DeleteBookmark(*bookmarkObject.ID)
+	err := db().DeleteBookmark(*bookmarkObject.ID, newUserID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	retrieved, err := db().Bookmark(*bookmarkObject.ID)
+	retrieved, err := db().Bookmark(*bookmarkObject.ID, newUserID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,6 +253,7 @@ func TestSessionByAccessToken(t *testing.T) {
 func TestCreateContact(t *testing.T) {
 	name := "Hank Hill"
 	contact := &Contact{Name: &name}
+	newUserID = 1
 	contact.OwnerID = &newUserID
 
 	contact.Emails = append(contact.Emails, NewEmail("hank@gmail.com", "Home"))
