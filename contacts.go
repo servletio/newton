@@ -3,12 +3,24 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 
 	"github.com/gorilla/mux"
 )
+
+// StructuredName ...
+type StructuredName struct {
+	DisplayName        *string `json:"display_name,omitempty"db:"display_name"`
+	Prefix             *string `json:"prefix,omitempty"`
+	GivenName          *string `json:"given_name,omitempty"db:"given_name"`
+	MiddleName         *string `json:"middle_name,omitempty"db:"middle_name"`
+	FamilyName         *string `json:"family_name,omitempty"db:"family_name"`
+	Suffix             *string `json:"suffix,omitempty"`
+	PhoneticGivenName  *string `json:"phonetic_given_name,omitempty"db:"phonetic_given_name"`
+	PhoneticMiddleName *string `json:"phonetic_middle_name,omitempty"db:"phonetic_middle_name"`
+	PhoneticFamilyName *string `json:"phonetic_family_name,omitempty"db:"phonetic_family_name"`
+}
 
 // Email ...
 type Email struct {
@@ -122,7 +134,7 @@ func NewEvent(startDate, eventType string) *Event {
 // Contact ...
 type Contact struct {
 	ID              *int64           `json:"id,omitempty"`
-	Name            *string          `json:"name,omitempty"`
+	Name            *StructuredName  `json:"name,omitempty"`
 	Emails          []*Email         `json:"emails,omitempty"db:"-"`
 	Phones          []*Phone         `json:"phones,omitempty"db:"-"`
 	IMHandles       []*IMHandle      `json:"im_handles,omitempty"db:"-"`
@@ -236,9 +248,71 @@ func DeleteContactHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	log.Printf("Delete contact %d", contactID)
 
 	err := db().DeleteContact(contactID, userID)
+	if err != nil {
+		sendInternalErr(w, err)
+		return
+	}
+
+	sendSuccess(w, nil)
+}
+
+// GetContactPhotoHandler handles GET /contacts/{contact_id}
+func GetContactPhotoHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authenticate(w, r)
+	if !ok {
+		return
+	}
+
+	contactID, ok := parseContactID(w, r)
+	if !ok {
+		return
+	}
+
+	ownerID, err := db().ContactOwner(contactID)
+	if err != nil {
+		sendInternalErr(w, err)
+		return
+	}
+	if ownerID != userID {
+		sendNotFound(w, "contact not found")
+		return
+	}
+
+	imgData, err := db().ContactPhoto(contactID)
+	if err != nil {
+		sendInternalErr(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "image/*")
+	w.Write(imgData)
+}
+
+// DeleteContactPhotoHandler handles DELETE /contacts/{contact_id}
+func DeleteContactPhotoHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authenticate(w, r)
+	if !ok {
+		return
+	}
+
+	contactID, ok := parseContactID(w, r)
+	if !ok {
+		return
+	}
+
+	ownerID, err := db().ContactOwner(contactID)
+	if err != nil {
+		sendInternalErr(w, err)
+		return
+	}
+	if ownerID != userID {
+		sendNotFound(w, "contact not found")
+		return
+	}
+
+	err = db().SetContactPhoto(contactID, nil)
 	if err != nil {
 		sendInternalErr(w, err)
 		return

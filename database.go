@@ -25,6 +25,9 @@ type NewtonDB interface {
 	Contact(contactID, ownerID int64) (*Contact, error)
 	Contacts(ownerID int64) ([]*Contact, error)
 	DeleteContact(contactID, ownerID int64) error
+	SetContactPhoto(contactID int64, photo []byte) error
+	ContactPhoto(contactID int64) ([]byte, error)
+	ContactOwner(contactID int64) (int64, error)
 }
 
 // InitDB initializes the database that backs the API

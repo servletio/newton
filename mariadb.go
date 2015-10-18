@@ -10,52 +10,154 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// DropAllMariaDBTables is just useful when testing
+const DropAllMariaDBTables = `
+DROP TABLE bookmarks,
+           contacts,
+		   contacts_name,
+		   contacts_emails,
+		   contacts_events,
+		   ontacts_im_handles,
+		   contacts_organization,
+		   contacts_phones,
+		   contacts_photo,
+		   contacts_postal_addresses,
+		   contacts_relations,
+		   contacts_websites,
+		   database_version,
+		   essions,
+		   users`
+
 // CreateTableDatabaseVersion is the statement to create a table that tracks the current schema version
-const CreateTableDatabaseVersion = `CREATE TABLE IF NOT EXISTS database_version (id INT NOT NULL AUTO_INCREMENT, version INT NOT NULL DEFAULT 0, PRIMARY KEY (id))`
+const CreateTableDatabaseVersion = `
+CREATE TABLE IF NOT EXISTS database_version (id INT NOT NULL AUTO_INCREMENT,
+                                             version INT NOT NULL DEFAULT 0,
+											 PRIMARY KEY (id))`
 
 // CreateTableBookmarks is the statement to create the bookmarks table
-const CreateTableBookmarks = `CREATE TABLE IF NOT EXISTS bookmarks (id INT NOT NULL AUTO_INCREMENT, url VARCHAR(2048) NOT NULL, title VARCHAR(1024), owner_id INT NOT NULL, PRIMARY KEY (id))`
+const CreateTableBookmarks = `
+CREATE TABLE IF NOT EXISTS bookmarks (id INT NOT NULL AUTO_INCREMENT,
+                                      url VARCHAR(2048) NOT NULL,
+									  title VARCHAR(1024),
+									  owner_id INT NOT NULL,
+									  PRIMARY KEY (id))`
 
 // CreateTableUsers is the statement to create the users table
-const CreateTableUsers = `CREATE TABLE IF NOT EXISTS users (id INT NOT NULL AUTO_INCREMENT, username VARCHAR(64) NOT NULL, full_name VARCHAR(128) NOT NULL, password VARCHAR(96) NOT NULL, PRIMARY KEY (id))`
+const CreateTableUsers = `
+CREATE TABLE IF NOT EXISTS users (id INT NOT NULL AUTO_INCREMENT,
+                                  username VARCHAR(64) NOT NULL,
+								  full_name VARCHAR(128) NOT NULL,
+								  password VARCHAR(96) NOT NULL,
+								  PRIMARY KEY (id))`
 
 // CreateTableSessions is the statement to create the sessions table
-const CreateTableSessions = `CREATE TABLE IF NOT EXISTS sessions (id INT NOT NULL AUTO_INCREMENT, access_token CHAR(32) NOT NULL, user_id INT NOT NULL, creation_date DATETIME NOT NULL, PRIMARY KEY (id))`
+const CreateTableSessions = `
+CREATE TABLE IF NOT EXISTS sessions (id INT NOT NULL AUTO_INCREMENT,
+                                     access_token CHAR(32) NOT NULL,
+									 user_id INT NOT NULL,
+									 creation_date DATETIME NOT NULL,
+									 PRIMARY KEY (id))`
 
 // CreateTableContacts is the statement to create the contacts table
-const CreateTableContacts = `CREATE TABLE IF NOT EXISTS contacts (id INT NOT NULL AUTO_INCREMENT, name VARCHAR(256), owner_id INT NOT NULL, PRIMARY KEY (id))`
+const CreateTableContacts = `
+CREATE TABLE IF NOT EXISTS contacts (id INT NOT NULL AUTO_INCREMENT,
+                                     owner_id INT NOT NULL,
+									 PRIMARY KEY (id))`
+
+// CreateTableContactsName is the statement to create the table for storing a contact's name
+const CreateTableContactsName = `
+CREATE TABLE IF NOT EXISTS contacts_name (contact_id INT NOT NULL,
+                                          display_name VARCHAR(256),
+										  prefix VARCHAR(32),
+										  given_name VARCHAR(64),
+										  middle_name VARCHAR(64),
+										  family_name VARCHAR(64),
+										  suffix VARCHAR(32),
+										  phonetic_given_name VARCHAR(64),
+										  phonetic_middle_name VARCHAR(64),
+										  phonetic_family_name VARCHAR(64),
+										  PRIMARY KEY (contact_id))`
 
 // CreateTableContactsEmails creates the table for storing a contact's emails
-const CreateTableContactsEmails = `CREATE TABLE IF NOT EXISTS contacts_emails (id INT NOT NULL AUTO_INCREMENT, contact_id INT NOT NULL, address VARCHAR(320), type VARCHAR(32), PRIMARY KEY (id))`
+const CreateTableContactsEmails = `
+CREATE TABLE IF NOT EXISTS contacts_emails (id INT NOT NULL AUTO_INCREMENT,
+                                            contact_id INT NOT NULL,
+											address VARCHAR(320),
+											type VARCHAR(32),
+											PRIMARY KEY (id))`
 
 // CreateTableContactsPhones creates the table for storing a contact's phone numbers
-const CreateTableContactsPhones = `CREATE TABLE IF NOT EXISTS contacts_phones (id INT NOT NULL AUTO_INCREMENT, contact_id INT NOT NULL, number VARCHAR(128), type VARCHAR(32), PRIMARY KEY (id))`
+const CreateTableContactsPhones = `
+CREATE TABLE IF NOT EXISTS contacts_phones (id INT NOT NULL AUTO_INCREMENT,
+                                            contact_id INT NOT NULL,
+											number VARCHAR(128),
+											type VARCHAR(32),
+											PRIMARY KEY (id))`
 
 // CreateTableContactsIMHandles creates the table for storing a contact's IM handles
-const CreateTableContactsIMHandles = `CREATE TABLE IF NOT EXISTS contacts_im_handles (id INT NOT NULL AUTO_INCREMENT, contact_id INT NOT NULL, identifier VARCHAR(128), protocol VARCHAR(32), type VARCHAR(32), PRIMARY KEY (id))`
+const CreateTableContactsIMHandles = `
+CREATE TABLE IF NOT EXISTS contacts_im_handles (id INT NOT NULL AUTO_INCREMENT,
+                                                contact_id INT NOT NULL,
+												identifier VARCHAR(128),
+												protocol VARCHAR(32),
+												type VARCHAR(32),
+												PRIMARY KEY (id))`
 
 // CreateTableContactsOrganization creates the table for storing a contact's organization/association details
-const CreateTableContactsOrganization = `CREATE TABLE IF NOT EXISTS contacts_organization (contact_id INT NOT NULL,
-	company VARCHAR(128),
-	type VARCHAR(32),
-	title VARCHAR(64),
-	department VARCHAR(64),
-	job_description VARCHAR(64),
-	symbol VARCHAR(16),
-	phonetic_name VARCHAR(64),
-	office_location VARCHAR(64), PRIMARY KEY (contact_id))`
+const CreateTableContactsOrganization = `
+CREATE TABLE IF NOT EXISTS contacts_organization (contact_id INT NOT NULL,
+                                                  company VARCHAR(128),
+												  type VARCHAR(32),
+												  title VARCHAR(64),
+												  department VARCHAR(64),
+												  job_description VARCHAR(64),
+												  symbol VARCHAR(16),
+												  phonetic_name VARCHAR(64),
+												  office_location VARCHAR(64), PRIMARY KEY (contact_id))`
 
 // CreateTableContactsRelations creates the table for storing a contact's relations (spouse, children, etc.)
-const CreateTableContactsRelations = `CREATE TABLE IF NOT EXISTS contacts_relations (id INT NOT NULL AUTO_INCREMENT, contact_id INT NOT NULL, name VARCHAR(128), type VARCHAR(32), PRIMARY KEY (id))`
+const CreateTableContactsRelations = `
+CREATE TABLE IF NOT EXISTS contacts_relations (id INT NOT NULL AUTO_INCREMENT,
+                                               contact_id INT NOT NULL,
+											   name VARCHAR(128),
+											   type VARCHAR(32),
+											   PRIMARY KEY (id))`
 
 // CreateTableContactsPostalAddresses creates the table for storing a contact's postal addresses
-const CreateTableContactsPostalAddresses = `CREATE TABLE IF NOT EXISTS contacts_postal_addresses (id INT NOT NULL AUTO_INCREMENT, contact_id INT NOT NULL, street VARCHAR(256), po_box VARCHAR(16), neighborhood VARCHAR(128), city VARCHAR(128), region VARCHAR(128), post_code VARCHAR(16), country VARCHAR(96), type VARCHAR(32), PRIMARY KEY(id))`
+const CreateTableContactsPostalAddresses = `
+CREATE TABLE IF NOT EXISTS contacts_postal_addresses (id INT NOT NULL AUTO_INCREMENT,
+                                                      contact_id INT NOT NULL,
+													  street VARCHAR(256),
+													  po_box VARCHAR(16),
+													  neighborhood VARCHAR(128),
+													  city VARCHAR(128),
+													  region VARCHAR(128),
+													  post_code VARCHAR(16),
+													  country VARCHAR(96),
+													  type VARCHAR(32),
+													  PRIMARY KEY(id))`
 
 // CreateTableContactsWebsites creates the table for storing a contact's websites
-const CreateTableContactsWebsites = `CREATE TABLE IF NOT EXISTS contacts_websites (id INT NOT NULL AUTO_INCREMENT, contact_id INT NOT NULL, address VARCHAR(2048), type VARCHAR(32), PRIMARY KEY (id))`
+const CreateTableContactsWebsites = `
+CREATE TABLE IF NOT EXISTS contacts_websites (id INT NOT NULL AUTO_INCREMENT,
+                                              contact_id INT NOT NULL,
+											  address VARCHAR(2048),
+											  type VARCHAR(32),
+											  PRIMARY KEY (id))`
 
 // CreateTableContactsEvents creates the table for storing a contact's events
-const CreateTableContactsEvents = `CREATE TABLE IF NOT EXISTS contacts_events (id INT NOT NULL AUTO_INCREMENT, contact_id INT NOT NULL, start_date VARCHAR(48), type VARCHAR(32), PRIMARY KEY (id))`
+const CreateTableContactsEvents = `
+CREATE TABLE IF NOT EXISTS contacts_events (id INT NOT NULL AUTO_INCREMENT,
+                                            contact_id INT NOT NULL,
+											start_date VARCHAR(48),
+											type VARCHAR(32),
+											PRIMARY KEY (id))`
+
+// CreateTableContactsPhoto creates the table for storing a contact's photo
+const CreateTableContactsPhoto = `
+CREATE TABLE IF NOT EXISTS contacts_photo (contact_id INT NOT NULL,
+                                           photo MEDIUMBLOB NOT NULL,
+										   PRIMARY KEY (contact_id))`
 
 // NewMariaDB returns a NewtonDB instance that is backed by a MariaDB instance described
 // in the dsn.
@@ -146,6 +248,7 @@ func migrateMariaDBFrom0To1(mdb *MariaNewtonDB) error {
 	creator.exec(CreateTableUsers)
 	creator.exec(CreateTableSessions)
 	creator.exec(CreateTableContacts)
+	creator.exec(CreateTableContactsName)
 	creator.exec(CreateTableContactsEmails)
 	creator.exec(CreateTableContactsPhones)
 	creator.exec(CreateTableContactsIMHandles)
@@ -154,6 +257,7 @@ func migrateMariaDBFrom0To1(mdb *MariaNewtonDB) error {
 	creator.exec(CreateTableContactsPostalAddresses)
 	creator.exec(CreateTableContactsWebsites)
 	creator.exec(CreateTableContactsEvents)
+	creator.exec(CreateTableContactsPhoto)
 
 	if creator.err != nil {
 		return creator.err
@@ -350,7 +454,7 @@ func (mdb *MariaNewtonDB) SessionByAccessToken(token string) (*Session, error) {
 
 // CreateContact persists a contact
 func (mdb *MariaNewtonDB) CreateContact(contact *Contact) (int64, error) {
-	const insertSQL = `INSERT INTO contacts (name, owner_id) VALUES (:name, :owner_id)`
+	const insertSQL = `INSERT INTO contacts (owner_id) VALUES (:owner_id)`
 
 	tx, err := mdb.db.Beginx()
 	if err != nil {
@@ -363,6 +467,18 @@ func (mdb *MariaNewtonDB) CreateContact(contact *Contact) (int64, error) {
 		return -1, err
 	}
 	contactID, err := result.LastInsertId()
+	if err != nil {
+		return -1, err
+	}
+
+	// store the name
+	const insertNameSQL = `
+INSERT INTO contacts_name
+	(contact_id, display_name, prefix, given_name, middle_name, family_name, suffix, phonetic_given_name, phonetic_middle_name, phonetic_family_name)
+VALUES
+	(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	name := contact.Name
+	_, err = tx.Exec(insertNameSQL, contactID, name.DisplayName, name.Prefix, name.GivenName, name.MiddleName, name.FamilyName, name.Suffix, name.PhoneticGivenName, name.PhoneticMiddleName, name.PhoneticFamilyName)
 	if err != nil {
 		return -1, err
 	}
@@ -482,13 +598,21 @@ func (mdb *MariaNewtonDB) ContactExists(id int64) (bool, error) {
 
 // Contact ...
 func (mdb *MariaNewtonDB) Contact(contactID, ownerID int64) (*Contact, error) {
-	const contactSQL = `SELECT id, name, owner_id FROM contacts WHERE id=? AND owner_id=?`
+	const contactSQL = `SELECT id, owner_id FROM contacts WHERE id=? AND owner_id=?`
 	contact := &Contact{}
 	err := mdb.db.Get(contact, contactSQL, contactID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
+		return nil, err
+	}
+
+	// get the name
+	const nameSQL = `SELECT * FROM contacts_name WHERE id=?`
+	contact.Name = &StructuredName{}
+	err = mdb.db.Get(contact.Name, nameSQL, contactID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -657,6 +781,7 @@ func (mdb *MariaNewtonDB) DeleteContact(contactID, ownerID int64) error {
 
 	deleter := errExecer{tx: tx}
 	deleter.exec("DELETE FROM contacts WHERE id=?", contactID)
+	deleter.exec("DELETE FROM contacts_name WHERE contact_id=?", contactID)
 	deleter.exec("DELETE FROM contacts_emails WHERE contact_id=?", contactID)
 	deleter.exec("DELETE FROM contacts_phones WHERE contact_id=?", contactID)
 	deleter.exec("DELETE FROM contacts_im_handles WHERE contact_id=?", contactID)
@@ -665,10 +790,55 @@ func (mdb *MariaNewtonDB) DeleteContact(contactID, ownerID int64) error {
 	deleter.exec("DELETE FROM contacts_postal_addresses WHERE contact_id=?", contactID)
 	deleter.exec("DELETE FROM contacts_websites WHERE contact_id=?", contactID)
 	deleter.exec("DELETE FROM contacts_events WHERE contact_id=?", contactID)
+	deleter.exec("DELETE FROM contacts_photo WHERE contact_id=?", contactID)
 	if deleter.err != nil {
 		return err
 	}
 	err = tx.Commit()
 
 	return err
+}
+
+// SetContactPhoto ...
+func (mdb *MariaNewtonDB) SetContactPhoto(contactID int64, photo []byte) error {
+	// make sure this contact exists
+	exists, err := mdb.ContactExists(contactID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return fmt.Errorf("contact %d doesn't exist", contactID)
+	}
+
+	if photo != nil {
+		const insertSQL = `INSERT INTO contacts_photo (contact_id, photo) VALUES (?, ?) ON DUPLICATE KEY UPDATE photo=?`
+		_, err = mdb.db.Exec(insertSQL, contactID, photo, photo)
+		return err
+	}
+
+	// nil photo, so this is a deletion
+	_, err = mdb.db.Exec("DELETE FROM contacts_photo WHERE contact_id=?", contactID)
+	return err
+}
+
+// ContactPhoto ...
+func (mdb *MariaNewtonDB) ContactPhoto(contactID int64) ([]byte, error) {
+	const selectSQL = `SELECT photo FROM contacts_photo WHERE contact_id=?`
+	var photo []byte
+	err := mdb.db.QueryRowx(selectSQL, contactID).Scan(&photo)
+	switch err {
+	case nil:
+		return photo, nil
+	case sql.ErrNoRows:
+		return nil, nil
+	default:
+		return nil, err
+	}
+}
+
+// ContactOwner ...
+func (mdb *MariaNewtonDB) ContactOwner(contactID int64) (int64, error) {
+	var ownerID int64
+	err := mdb.db.QueryRow("SELECT owner_id FROM contacts WHERE id=?", contactID).Scan(&ownerID)
+	return ownerID, err
 }

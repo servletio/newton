@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"log"
 	"os"
 	"testing"
@@ -9,10 +10,13 @@ import (
 var bookmarkObject *Bookmark
 var newUserID int64
 var newAccessToken string
+var hankHillContactID int64
 
 const testUsername = "arash"
 const testFullName = "Stinky Pete"
 const testPassword = "a bad password"
+
+var imageData = []byte{137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 27, 0, 0, 0, 27, 8, 4, 0, 0, 0, 39, 221, 60, 222, 0, 0, 0, 252, 73, 68, 65, 84, 120, 1, 237, 212, 161, 75, 107, 97, 28, 6, 224, 7, 150, 212, 102, 211, 164, 77, 133, 25, 214, 108, 155, 81, 48, 234, 13, 23, 46, 227, 150, 11, 6, 17, 220, 255, 225, 48, 136, 97, 147, 253, 21, 154, 134, 75, 22, 5, 141, 75, 227, 196, 45, 202, 101, 90, 6, 159, 240, 133, 3, 115, 158, 125, 101, 193, 224, 243, 134, 23, 62, 126, 239, 137, 199, 39, 171, 134, 246, 76, 171, 25, 90, 146, 112, 234, 213, 111, 151, 158, 12, 60, 186, 240, 199, 127, 127, 37, 149, 60, 8, 83, 233, 41, 73, 234, 8, 51, 185, 145, 240, 43, 158, 53, 101, 226, 64, 166, 25, 251, 200, 92, 47, 241, 168, 161, 47, 206, 244, 53, 98, 63, 155, 99, 93, 40, 204, 154, 66, 21, 89, 97, 42, 22, 165, 102, 100, 96, 71, 85, 40, 76, 85, 89, 102, 164, 42, 119, 39, 8, 174, 18, 179, 235, 216, 183, 114, 189, 248, 208, 73, 204, 58, 177, 123, 139, 159, 253, 204, 186, 241, 161, 157, 152, 181, 99, 119, 229, 78, 4, 19, 7, 137, 217, 161, 137, 224, 159, 28, 219, 54, 176, 59, 103, 86, 198, 166, 45, 95, 218, 87, 23, 98, 90, 234, 90, 66, 76, 93, 77, 74, 126, 42, 255, 4, 190, 219, 236, 61, 158, 30, 231, 63, 164, 55, 105, 56, 55, 214, 181, 140, 21, 247, 198, 206, 204, 248, 0, 255, 61, 90, 202, 148, 177, 201, 123, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130}
 
 func TestInstantiateDatabase(t *testing.T) {
 	dsn := os.Getenv("SQL_DB")
@@ -251,10 +255,14 @@ func TestSessionByAccessToken(t *testing.T) {
 }
 
 func TestCreateContact(t *testing.T) {
-	name := "Hank Hill"
-	contact := &Contact{Name: &name}
-	newUserID = 1
+
+	givenName := "Hank"
+	familyName := "Hill"
+	displayName := givenName + " " + familyName
+	contact := &Contact{}
 	contact.OwnerID = &newUserID
+
+	contact.Name = &StructuredName{DisplayName: &displayName, GivenName: &givenName, FamilyName: &familyName}
 
 	contact.Emails = append(contact.Emails, NewEmail("hank@gmail.com", "Home"))
 	contact.Emails = append(contact.Emails, NewEmail("hank@stricklandpropane.com", "Work"))
@@ -291,11 +299,41 @@ func TestCreateContact(t *testing.T) {
 
 	contact.Events = append(contact.Events, NewEvent("April 19, 1957", "birthday"))
 
-	id, err := db().CreateContact(contact)
+	var err error
+	hankHillContactID, err = db().CreateContact(contact)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id < 1 {
-		t.Fatalf("did not get a valid id: %d", id)
+	if hankHillContactID < 1 {
+		t.Fatalf("did not get a valid id: %d", hankHillContactID)
+	}
+}
+
+func TestSetContactPhoto(t *testing.T) {
+	err := db().SetContactPhoto(hankHillContactID, imageData)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	retrievedData, err := db().ContactPhoto(hankHillContactID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(retrievedData, imageData) {
+		t.Fatal("retrieved image data does not match the original data put into the database")
+	}
+
+	err = db().SetContactPhoto(hankHillContactID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	retrievedData, err = db().ContactPhoto(hankHillContactID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retrievedData != nil {
+		t.Fatal("retrieved image should be nil after deletion")
 	}
 }
