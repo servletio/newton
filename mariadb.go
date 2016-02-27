@@ -17,7 +17,7 @@ DROP TABLE bookmarks,
 		   contacts_name,
 		   contacts_emails,
 		   contacts_events,
-		   ontacts_im_handles,
+		   ontacts_im_accounts,
 		   contacts_organization,
 		   contacts_phones,
 		   contacts_photo,
@@ -61,6 +61,8 @@ CREATE TABLE IF NOT EXISTS sessions (id INT NOT NULL AUTO_INCREMENT,
 // CreateTableContacts is the statement to create the contacts table
 const CreateTableContacts = `
 CREATE TABLE IF NOT EXISTS contacts (id INT NOT NULL AUTO_INCREMENT,
+	                                 nickname VARCHAR(32),
+									 note TEXT,
                                      owner_id INT NOT NULL,
 									 PRIMARY KEY (id))`
 
@@ -83,37 +85,36 @@ const CreateTableContactsEmails = `
 CREATE TABLE IF NOT EXISTS contacts_emails (id INT NOT NULL AUTO_INCREMENT,
                                             contact_id INT NOT NULL,
 											address VARCHAR(320),
-											type VARCHAR(32),
+											type TINYINT,
+											label VARCHAR(32),
 											PRIMARY KEY (id))`
 
 // CreateTableContactsPhones creates the table for storing a contact's phone numbers
 const CreateTableContactsPhones = `
 CREATE TABLE IF NOT EXISTS contacts_phones (id INT NOT NULL AUTO_INCREMENT,
                                             contact_id INT NOT NULL,
-											number VARCHAR(128),
-											type VARCHAR(32),
+											number VARCHAR(48),
+											type TINYINT,
+											label VARCHAR(32),
 											PRIMARY KEY (id))`
 
-// CreateTableContactsIMHandles creates the table for storing a contact's IM handles
-const CreateTableContactsIMHandles = `
-CREATE TABLE IF NOT EXISTS contacts_im_handles (id INT NOT NULL AUTO_INCREMENT,
-                                                contact_id INT NOT NULL,
-												identifier VARCHAR(128),
-												protocol VARCHAR(32),
-												type VARCHAR(32),
-												PRIMARY KEY (id))`
+// CreateTableContactsIMAccounts creates the table for storing a contact's IM handles
+const CreateTableContactsIMAccounts = `
+CREATE TABLE IF NOT EXISTS contacts_im_accounts (id INT NOT NULL AUTO_INCREMENT,
+                                                 contact_id INT NOT NULL,
+												 handle VARCHAR(128),
+												 type TINYINT,
+												 label VARCHAR(32),
+												 protocol TINYINT,
+												 custom_protocol VARCHAR(32),
+												 PRIMARY KEY (id))`
 
 // CreateTableContactsOrganization creates the table for storing a contact's organization/association details
 const CreateTableContactsOrganization = `
 CREATE TABLE IF NOT EXISTS contacts_organization (contact_id INT NOT NULL,
                                                   company VARCHAR(128),
-												  type VARCHAR(32),
 												  title VARCHAR(64),
-												  department VARCHAR(64),
-												  job_description VARCHAR(64),
-												  symbol VARCHAR(16),
-												  phonetic_name VARCHAR(64),
-												  office_location VARCHAR(64), PRIMARY KEY (contact_id))`
+												  PRIMARY KEY (contact_id))`
 
 // CreateTableContactsRelations creates the table for storing a contact's relations (spouse, children, etc.)
 const CreateTableContactsRelations = `
@@ -134,7 +135,8 @@ CREATE TABLE IF NOT EXISTS contacts_postal_addresses (id INT NOT NULL AUTO_INCRE
 													  region VARCHAR(128),
 													  post_code VARCHAR(16),
 													  country VARCHAR(96),
-													  type VARCHAR(32),
+													  type TINYINT,
+													  label VARCHAR(32),
 													  PRIMARY KEY(id))`
 
 // CreateTableContactsWebsites creates the table for storing a contact's websites
@@ -251,7 +253,7 @@ func migrateMariaDBFrom0To1(mdb *MariaNewtonDB) error {
 	creator.exec(CreateTableContactsName)
 	creator.exec(CreateTableContactsEmails)
 	creator.exec(CreateTableContactsPhones)
-	creator.exec(CreateTableContactsIMHandles)
+	creator.exec(CreateTableContactsIMAccounts)
 	creator.exec(CreateTableContactsOrganization)
 	creator.exec(CreateTableContactsRelations)
 	creator.exec(CreateTableContactsPostalAddresses)
@@ -454,21 +456,21 @@ func (mdb *MariaNewtonDB) SessionByAccessToken(token string) (*Session, error) {
 
 // CreateContact persists a contact
 func (mdb *MariaNewtonDB) CreateContact(contact *Contact) (int64, error) {
-	const insertSQL = `INSERT INTO contacts (owner_id) VALUES (:owner_id)`
+	const insertSQL = `INSERT INTO contacts (nickname, note, owner_id) VALUES (?, ?, ?)`
 
 	tx, err := mdb.db.Beginx()
 	if err != nil {
-		return -1, err
+		return -1, NewtonErr(err)
 	}
 	defer tx.Rollback()
 
-	result, err := sqlx.NamedExec(tx, insertSQL, contact)
+	result, err := tx.Exec(insertSQL, contact.Nickname, contact.Note, contact.OwnerID)
 	if err != nil {
-		return -1, err
+		return -1, NewtonErr(err)
 	}
 	contactID, err := result.LastInsertId()
 	if err != nil {
-		return -1, err
+		return -1, NewtonErr(err)
 	}
 
 	// store the name
@@ -480,51 +482,45 @@ VALUES
 	name := contact.Name
 	_, err = tx.Exec(insertNameSQL, contactID, name.DisplayName, name.Prefix, name.GivenName, name.MiddleName, name.FamilyName, name.Suffix, name.PhoneticGivenName, name.PhoneticMiddleName, name.PhoneticFamilyName)
 	if err != nil {
-		return -1, err
+		return -1, NewtonErr(err)
 	}
 
 	// populate any emails in there
-	const insertEmailSQL = `INSERT INTO contacts_emails (contact_id, address, type) VALUES (?, ?, ?)`
+	const insertEmailSQL = `INSERT INTO contacts_emails (contact_id, address, type, label) VALUES (?, ?, ?, ?)`
 	for _, email := range contact.Emails {
-		_, err = tx.Exec(insertEmailSQL, contactID, email.Address, email.Type)
+		_, err = tx.Exec(insertEmailSQL, contactID, email.Address, email.Type, email.Label)
 		if err != nil {
-			return -1, err
+			return -1, NewtonErr(err)
 		}
 	}
 
 	// add the phone numbers
-	const insertPhoneSQL = `INSERT INTO contacts_phones (contact_id, number, type) VALUES (?, ?, ?)`
+	const insertPhoneSQL = `INSERT INTO contacts_phones (contact_id, number, type, label) VALUES (?, ?, ?, ?)`
 	for _, phone := range contact.Phones {
-		_, err = tx.Exec(insertPhoneSQL, contactID, phone.Number, phone.Type)
+		_, err = tx.Exec(insertPhoneSQL, contactID, phone.Number, phone.Type, phone.Label)
 		if err != nil {
-			return -1, err
+			return -1, NewtonErr(err)
 		}
 	}
 
-	// add the IM handles
-	const insertIMHandleSQL = `INSERT INTO contacts_im_handles (contact_id, identifier, protocol, type) VALUES (?, ?, ?, ?)`
-	for _, imHandle := range contact.IMHandles {
-		_, err = tx.Exec(insertIMHandleSQL, contactID, imHandle.Identifier, imHandle.Protocol, imHandle.Type)
+	// add the IMs
+	const insertIMAccountsSQL = `INSERT INTO contacts_im_accounts (contact_id, handle, type, label, protocol, custom_protocol) VALUES (?, ?, ?, ?, ?, ?)`
+	for _, account := range contact.IMAccounts {
+		_, err = tx.Exec(insertIMAccountsSQL, contactID, account.Handle, account.Type, account.Label, account.Protocol, account.CustomProtocol)
 		if err != nil {
-			return -1, err
+			return -1, NewtonErr(err)
 		}
 	}
 
 	// add the Organization details
 	if contact.Org != nil {
-		const insertOrgSQL = `INSERT INTO contacts_organization (contact_id, company, type, title, department, job_description, symbol, phonetic_name, office_location) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		const insertOrgSQL = `INSERT INTO contacts_organization (contact_id, company, title) VALUES (?, ?, ?)`
 		_, err = tx.Exec(insertOrgSQL,
 			contactID,
 			contact.Org.Company,
-			contact.Org.Type,
-			contact.Org.Title,
-			contact.Org.Department,
-			contact.Org.JobDescription,
-			contact.Org.Symbol,
-			contact.Org.PhoneticName,
-			contact.Org.OfficeLocation)
+			contact.Org.Title)
 		if err != nil {
-			return -1, err
+			return -1, NewtonErr(err)
 		}
 	}
 
@@ -533,7 +529,7 @@ VALUES
 	for _, relation := range contact.Relations {
 		_, err = tx.Exec(insertRelationSQL, contactID, relation.Name, relation.Type)
 		if err != nil {
-			return -1, err
+			return -1, NewtonErr(err)
 		}
 	}
 
@@ -551,16 +547,16 @@ VALUES
 			address.Country,
 			address.Type)
 		if err != nil {
-			return -1, err
+			return -1, NewtonErr(err)
 		}
 	}
 
 	// add websites
-	const insertWebsiteSQL = `INSERT INTO contacts_websites (contact_id, address, type) VALUES (?, ?, ?)`
+	const insertWebsiteSQL = `INSERT INTO contacts_websites (contact_id, address) VALUES (?, ?)`
 	for _, site := range contact.Websites {
-		_, err = tx.Exec(insertWebsiteSQL, contactID, site.Address, site.Type)
+		_, err = tx.Exec(insertWebsiteSQL, contactID, site)
 		if err != nil {
-			return -1, err
+			return -1, NewtonErr(err)
 		}
 	}
 
@@ -569,13 +565,13 @@ VALUES
 	for _, event := range contact.Events {
 		_, err = tx.Exec(insertEventSQL, contactID, event.StartDate, event.Type)
 		if err != nil {
-			return -1, err
+			return -1, NewtonErr(err)
 		}
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		return -1, err
+		return -1, NewtonErr(err)
 	}
 
 	return contactID, nil
@@ -598,71 +594,94 @@ func (mdb *MariaNewtonDB) ContactExists(id int64) (bool, error) {
 
 // Contact ...
 func (mdb *MariaNewtonDB) Contact(contactID, ownerID int64) (*Contact, error) {
-	const contactSQL = `SELECT id, owner_id FROM contacts WHERE id=? AND owner_id=?`
+	const contactSQL = `SELECT * FROM contacts WHERE id=? AND owner_id=?`
 	contact := &Contact{}
-	err := mdb.db.Get(contact, contactSQL, contactID)
+	err := mdb.db.Get(contact, contactSQL, contactID, ownerID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, err
+		return nil, NewtonErr(err)
 	}
 
 	// get the name
-	const nameSQL = `SELECT * FROM contacts_name WHERE id=?`
+	const nameSQL = `
+	SELECT display_name,
+           prefix,
+		   given_name,
+		   middle_name,
+		   family_name,
+		   suffix,
+		   phonetic_given_name,
+		   phonetic_middle_name,
+		   phonetic_family_name
+	FROM contacts_name
+	WHERE contact_id=?`
 	contact.Name = &StructuredName{}
 	err = mdb.db.Get(contact.Name, nameSQL, contactID)
 	if err != nil {
-		return nil, err
+		return nil, NewtonErr(err)
 	}
 
 	// get the emails
-	const emailsSQL = `SELECT address, type FROM contacts_emails WHERE contact_id=?`
+	const emailsSQL = `
+	SELECT address, type, label
+	FROM contacts_emails
+	WHERE contact_id=?`
 	rows, err := mdb.db.Queryx(emailsSQL, contact.ID)
 	if err != nil {
-		return nil, err
+		return nil, NewtonErr(err)
 	}
 	for rows.Next() {
 		email := &Email{}
 		err = rows.StructScan(email)
 		if err != nil {
-			return nil, err
+			return nil, NewtonErr(err)
 		}
 		contact.Emails = append(contact.Emails, email)
 	}
 
 	// get the phone numbers
-	const phonesSQL = `SELECT number, type FROM contacts_phones WHERE contact_id=?`
+	const phonesSQL = `
+	SELECT number, type
+	FROM contacts_phones
+	WHERE contact_id=?`
 	rows, err = mdb.db.Queryx(phonesSQL, contact.ID)
 	if err != nil {
-		return nil, err
+		return nil, NewtonErr(err)
 	}
 	for rows.Next() {
 		phone := &Phone{}
 		err = rows.StructScan(phone)
 		if err != nil {
-			return nil, err
+			return nil, NewtonErr(err)
 		}
 		contact.Phones = append(contact.Phones, phone)
 	}
 
-	// get the IM handles
-	const imHandlesSQL = `SELECT identifier, protocol, type FROM contacts_im_handles WHERE contact_id=?`
-	rows, err = mdb.db.Queryx(imHandlesSQL, contact.ID)
+	// get the IM accounts
+	const imAccountsSQL = `
+	SELECT handle, type, label, protocol, custom_protocol
+	FROM contacts_im_accounts
+	WHERE contact_id=?`
+	rows, err = mdb.db.Queryx(imAccountsSQL, contact.ID)
 	if err != nil {
-		return nil, err
+		return nil, NewtonErr(err)
 	}
 	for rows.Next() {
-		imHandle := &IMHandle{}
-		err = rows.StructScan(imHandle)
+		account := &IMAccount{}
+		err = rows.StructScan(account)
 		if err != nil {
-			return nil, err
+			return nil, NewtonErr(err)
 		}
-		contact.IMHandles = append(contact.IMHandles, imHandle)
+		contact.IMAccounts = append(contact.IMAccounts, account)
 	}
 
 	// retrieve any organization details
-	const orgSQL = `SELECT company, type, title, department, job_description, symbol, phonetic_name, office_location FROM contacts_organization WHERE contact_id=?`
+	const orgSQL = `
+	SELECT company, title
+	FROM contacts_organization
+	WHERE contact_id=?`
 	org := &Organization{}
 	err = mdb.db.QueryRowx(orgSQL, contact.ID).StructScan(org)
 	switch err {
@@ -671,20 +690,20 @@ func (mdb *MariaNewtonDB) Contact(contactID, ownerID int64) (*Contact, error) {
 		fallthrough
 	case sql.ErrNoRows:
 	default:
-		return nil, err
+		return nil, NewtonErr(err)
 	}
 
 	// retrieve the relations
 	const relationsSQL = `SELECT name, type FROM contacts_relations WHERE contact_id=?`
 	rows, err = mdb.db.Queryx(relationsSQL, contact.ID)
 	if err != nil {
-		return nil, err
+		return nil, NewtonErr(err)
 	}
 	for rows.Next() {
 		relation := &Relation{}
 		err = rows.StructScan(relation)
 		if err != nil {
-			return nil, err
+			return nil, NewtonErr(err)
 		}
 		contact.Relations = append(contact.Relations, relation)
 	}
@@ -693,28 +712,28 @@ func (mdb *MariaNewtonDB) Contact(contactID, ownerID int64) (*Contact, error) {
 	const postalsSQL = `SELECT street, po_box, neighborhood, city, region, post_code, country, type FROM contacts_postal_addresses WHERE contact_id=?`
 	rows, err = mdb.db.Queryx(postalsSQL, contact.ID)
 	if err != nil {
-		return nil, err
+		return nil, NewtonErr(err)
 	}
 	for rows.Next() {
 		postal := &PostalAddress{}
 		err = rows.StructScan(postal)
 		if err != nil {
-			return nil, err
+			return nil, NewtonErr(err)
 		}
 		contact.PostalAddresses = append(contact.PostalAddresses, postal)
 	}
 
 	// websites
-	const sitesSQL = `SELECT address, type FROM contacts_websites WHERE contact_id=?`
+	const sitesSQL = `SELECT address FROM contacts_websites WHERE contact_id=?`
 	rows, err = mdb.db.Queryx(sitesSQL, contact.ID)
 	if err != nil {
-		return nil, err
+		return nil, NewtonErr(err)
 	}
 	for rows.Next() {
-		site := &Website{}
-		err = rows.StructScan(site)
+		var site string
+		err = rows.Scan(&site)
 		if err != nil {
-			return nil, err
+			return nil, NewtonErr(err)
 		}
 		contact.Websites = append(contact.Websites, site)
 	}
@@ -723,13 +742,13 @@ func (mdb *MariaNewtonDB) Contact(contactID, ownerID int64) (*Contact, error) {
 	const eventsSQL = `SELECT start_date, type FROM contacts_events WHERE contact_id=?`
 	rows, err = mdb.db.Queryx(eventsSQL, contact.ID)
 	if err != nil {
-		return nil, err
+		return nil, NewtonErr(err)
 	}
 	for rows.Next() {
 		event := &Event{}
 		err = rows.StructScan(event)
 		if err != nil {
-			return nil, err
+			return nil, NewtonErr(err)
 		}
 		contact.Events = append(contact.Events, event)
 	}
@@ -784,7 +803,7 @@ func (mdb *MariaNewtonDB) DeleteContact(contactID, ownerID int64) error {
 	deleter.exec("DELETE FROM contacts_name WHERE contact_id=?", contactID)
 	deleter.exec("DELETE FROM contacts_emails WHERE contact_id=?", contactID)
 	deleter.exec("DELETE FROM contacts_phones WHERE contact_id=?", contactID)
-	deleter.exec("DELETE FROM contacts_im_handles WHERE contact_id=?", contactID)
+	deleter.exec("DELETE FROM contacts_im_accounts WHERE contact_id=?", contactID)
 	deleter.exec("DELETE FROM contacts_organization WHERE contact_id=?", contactID)
 	deleter.exec("DELETE FROM contacts_relations WHERE contact_id=?", contactID)
 	deleter.exec("DELETE FROM contacts_postal_addresses WHERE contact_id=?", contactID)

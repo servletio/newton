@@ -2,10 +2,12 @@ package main
 
 import (
 	crand "crypto/rand"
+	"fmt"
 	"log"
 	"math/big"
 	"math/rand"
 	"net/http"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -52,6 +54,30 @@ func randAlphaNum(length int) string {
 	}
 
 	return s
+}
+
+type newtonErr struct {
+	err  error
+	file string
+	line int
+}
+
+func (ne newtonErr) Error() string {
+	return fmt.Sprintf("%s:%d %v", ne.file, ne.line, ne.err)
+}
+
+// NewtonErr wraps an err, and captures the filename and line number of the caller
+// and returns an object that wraps the original error. When Error() is called on
+// the returned error, it will prepend the original error's Error() with file:line
+func NewtonErr(err error) error {
+	_, file, line, ok := runtime.Caller(1)
+	if !ok {
+		file = "???"
+		line = 0
+	}
+	file = filepath.Base(file)
+
+	return newtonErr{err: err, file: file, line: line}
 }
 
 func logErr(err error) {

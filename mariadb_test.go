@@ -255,49 +255,65 @@ func TestSessionByAccessToken(t *testing.T) {
 }
 
 func TestCreateContact(t *testing.T) {
-
 	givenName := "Hank"
 	familyName := "Hill"
 	displayName := givenName + " " + familyName
 	contact := &Contact{}
 	contact.OwnerID = &newUserID
+	contact.Nickname = &givenName
+	note := "Bwaaaaahahhh!!!!"
+	contact.Note = &note
 
 	contact.Name = &StructuredName{DisplayName: &displayName, GivenName: &givenName, FamilyName: &familyName}
 
-	contact.Emails = append(contact.Emails, NewEmail("hank@gmail.com", "Home"))
-	contact.Emails = append(contact.Emails, NewEmail("hank@stricklandpropane.com", "Work"))
+	contact.Emails = append(contact.Emails, &Email{Address: "hank@gmail.com", Type: EmailTypeHome})
+	contact.Emails = append(contact.Emails, &Email{Address: "hank@stricklandpropane.com", Type: EmailTypeWork})
 
-	contact.Phones = append(contact.Phones, NewPhone("+1 214-555-1212", "Work"))
-	contact.Phones = append(contact.Phones, NewPhone("469 555-1212", "Mobile"))
+	contact.Phones = append(contact.Phones, &Phone{Number: "+1 214-555-1212", Type: PhoneTypeWork})
+	contact.Phones = append(contact.Phones, &Phone{Number: "469 555-1212", Type: PhoneTypeMobile})
 
-	contact.IMHandles = append(contact.IMHandles, NewIMHandle("hank@gmail.com", "gtalk", "Home"))
-	contact.IMHandles = append(contact.IMHandles, NewIMHandle("hank@stricklandpropane.com", "xmpp", "Work"))
+	contact.IMAccounts = append(contact.IMAccounts, &IMAccount{
+		Handle:   "hank@gmail.com",
+		Type:     IMTypeHome,
+		Protocol: IMProtocolHangouts,
+	})
+	contact.IMAccounts = append(contact.IMAccounts, &IMAccount{
+		Handle:   "hank@stricklandpropane.com",
+		Type:     IMTypeWork,
+		Protocol: IMProtocolXMPP,
+	})
+	imtype := "research"
+	improtocol := "researchprotocol"
+	account := &IMAccount{
+		Handle:         "hank@thehills.com",
+		Type:           IMTypeCustom,
+		Label:          &imtype,
+		Protocol:       IMProtocolCustom,
+		CustomProtocol: &improtocol,
+	}
+	contact.IMAccounts = append(contact.IMAccounts, account)
 
 	contact.Org = &Organization{}
 	company := "Strickland Propane"
 	contact.Org.Company = &company
 	title := "Assistant Manager"
 	contact.Org.Title = &title
-	department := "Sales"
-	contact.Org.Department = &department
-	jobDescription := "Selling propane and propane accessories"
-	contact.Org.JobDescription = &jobDescription
-	officeLocation := "In the back"
-	contact.Org.OfficeLocation = &officeLocation
 
-	contact.Relations = append(contact.Relations, NewRelation("Peggy", "wife"))
-	contact.Relations = append(contact.Relations, NewRelation("Bobby", "son"))
-	contact.Relations = append(contact.Relations, NewRelation("Luanne", "niece"))
-	contact.Relations = append(contact.Relations, NewRelation("Junichiro", "half-brother"))
+	contact.Relations = append(contact.Relations, &Relation{Name: "Peggy", Type: RelationTypeSpouse})
+	contact.Relations = append(contact.Relations, &Relation{Name: "Bobby", Type: RelationTypeChild})
+	niece := "niece"
+	contact.Relations = append(contact.Relations, &Relation{Name: "Luanne", Type: RelationTypeCustom, Label: &niece})
+	halfBrother := "Half-brother"
+	contact.Relations = append(contact.Relations, &Relation{Name: "Junichiro", Type: RelationTypeCustom, Label: &halfBrother})
 
-	workAddress := NewUSAAddress("135 Los Gatos Road", "Arlen", "Texas", "12345", "work")
-	homeAddress := NewUSAAddress("123 Don't Know St", "Arlen", "Texas", "12345", "home")
+	workAddress := NewUSAAddress("135 Los Gatos Road", "Arlen", "Texas", "12345", PostalAddressTypeWork)
+	homeAddress := NewUSAAddress("123 Don't Know St", "Arlen", "Texas", "12345", PostalAddressTypeHome)
 	contact.PostalAddresses = append(contact.PostalAddresses, workAddress, homeAddress)
 
-	contact.Websites = append(contact.Websites, NewWebsite("https://stricklandpropane.com", "work"))
-	contact.Websites = append(contact.Websites, NewWebsite("https://hillfamily.com/hank", "personal"))
+	contact.Websites = append(contact.Websites, "https://stricklandpropane.com")
+	contact.Websites = append(contact.Websites, "https://hillfamily.com/hank")
 
-	contact.Events = append(contact.Events, NewEvent("April 19, 1957", "birthday"))
+	contact.Events = append(contact.Events, &Event{StartDate: "April 19, 1957", Type: EventTypeBirthday})
 
 	var err error
 	hankHillContactID, err = db().CreateContact(contact)
@@ -306,6 +322,64 @@ func TestCreateContact(t *testing.T) {
 	}
 	if hankHillContactID < 1 {
 		t.Fatalf("did not get a valid id: %d", hankHillContactID)
+	}
+}
+
+func TestRetrieveContact(t *testing.T) {
+	contact, err := db().Contact(hankHillContactID, newUserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if contact.Name == nil {
+		t.Fatal("Name of retrieved contact is nil")
+	}
+	if *contact.Name.DisplayName != "Hank Hill" {
+		t.Fatal("DisplayName is wrong")
+	}
+	if *contact.Name.GivenName != "Hank" {
+		t.Fatal("GivenName is wrong")
+	}
+	if *contact.Name.FamilyName != "Hill" {
+		t.Fatal("FamilyName is wrong")
+	}
+
+	if contact.Emails[0].Address != "hank@gmail.com" || contact.Emails[0].Type != EmailTypeHome {
+		t.Fatal("wrong first email")
+	}
+	if contact.Emails[1].Address != "hank@stricklandpropane.com" || contact.Emails[1].Type != EmailTypeWork {
+		t.Fatal("wrong second email")
+	}
+
+	if contact.Phones[0].Number != "+1 214-555-1212" || contact.Phones[0].Type != PhoneTypeWork {
+		t.Fatal("wrong first number")
+	}
+	if contact.Phones[1].Number != "469 555-1212" || contact.Phones[1].Type != PhoneTypeMobile {
+		t.Fatal("wrong second number")
+	}
+
+	if contact.IMAccounts[0].Handle != "hank@gmail.com" ||
+		contact.IMAccounts[0].Type != IMTypeHome ||
+		contact.IMAccounts[0].Protocol != IMProtocolHangouts {
+		t.Fatal("wrong first IM account")
+	}
+	if contact.IMAccounts[1].Handle != "hank@stricklandpropane.com" ||
+		contact.IMAccounts[1].Type != IMTypeWork ||
+		contact.IMAccounts[1].Protocol != IMProtocolXMPP {
+		t.Fatal("wrong second IM account")
+	}
+	if contact.IMAccounts[2].Handle != "hank@thehills.com" ||
+		contact.IMAccounts[2].Type != IMTypeCustom ||
+		*contact.IMAccounts[2].Label != "research" ||
+		contact.IMAccounts[2].Protocol != IMProtocolCustom ||
+		*contact.IMAccounts[2].CustomProtocol != "researchprotocol" {
+		t.Fatal("wrong third IM account")
+	}
+
+	if contact.Org == nil ||
+		*contact.Org.Company != "Strickland Propane" ||
+		*contact.Org.Title != "Assistant Manager" {
+		t.Fatal("organization not loaded properly")
 	}
 }
 
