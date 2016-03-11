@@ -57,15 +57,14 @@ CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY NOT NULL,
 
 // CreateTableContacts is the statement to create the contacts table
 const CreateTableContacts = `
-CREATE TABLE IF NOT EXISTS contacts (id INTEGER NOT NULL,
+CREATE TABLE IF NOT EXISTS contacts (id INTEGER PRIMARY KEY NOT NULL,
 	                                 nickname TEXT,
 									 note TEXT,
-                                     owner_id INTEGER NOT NULL,
-									 PRIMARY KEY (id))`
+                                     owner_id INTEGER NOT NULL)`
 
 // CreateTableContactsName is the statement to create the table for storing a contact's name
 const CreateTableContactsName = `
-CREATE TABLE IF NOT EXISTS contacts_name (contact_id INTEGER NOT NULL,
+CREATE TABLE IF NOT EXISTS contacts_name (contact_id INTEGER PRIMARY KEY NOT NULL,
                                           display_name TEXT,
 										  prefix TEXT,
 										  given_name TEXT,
@@ -74,56 +73,50 @@ CREATE TABLE IF NOT EXISTS contacts_name (contact_id INTEGER NOT NULL,
 										  suffix TEXT,
 										  phonetic_given_name TEXT,
 										  phonetic_middle_name TEXT,
-										  phonetic_family_name TEXT,
-										  PRIMARY KEY (contact_id))`
+										  phonetic_family_name TEXT)`
 
 // CreateTableContactsEmails creates the table for storing a contact's emails
 const CreateTableContactsEmails = `
-CREATE TABLE IF NOT EXISTS contacts_emails (id INTEGER NOT NULL,
+CREATE TABLE IF NOT EXISTS contacts_emails (id INTEGER PRIMARY KEY NOT NULL,
                                             contact_id INTEGER NOT NULL,
 											address TEXT,
 											type INTEGER,
-											label TEXT,
-											PRIMARY KEY (id))`
+											label TEXT)`
 
 // CreateTableContactsPhones creates the table for storing a contact's phone numbers
 const CreateTableContactsPhones = `
-CREATE TABLE IF NOT EXISTS contacts_phones (id INTEGER NOT NULL,
+CREATE TABLE IF NOT EXISTS contacts_phones (id INTEGER PRIMARY KEY NOT NULL,
                                             contact_id INTEGER NOT NULL,
 											number TEXT,
 											type INTEGER,
-											label TEXT,
-											PRIMARY KEY (id))`
+											label TEXT)`
 
 // CreateTableContactsIMAccounts creates the table for storing a contact's IM handles
 const CreateTableContactsIMAccounts = `
-CREATE TABLE IF NOT EXISTS contacts_im_accounts (id INTEGER NOT NULL,
+CREATE TABLE IF NOT EXISTS contacts_im_accounts (id INTEGER PRIMARY KEY NOT NULL,
                                                  contact_id INTEGER NOT NULL,
 												 handle TEXT,
 												 type INTEGER,
 												 label TEXT,
 												 protocol INTEGER,
-												 custom_protocol TEXT,
-												 PRIMARY KEY (id))`
+												 custom_protocol TEXT)`
 
 // CreateTableContactsOrganization creates the table for storing a contact's organization/association details
 const CreateTableContactsOrganization = `
-CREATE TABLE IF NOT EXISTS contacts_organization (contact_id INTEGER NOT NULL,
+CREATE TABLE IF NOT EXISTS contacts_organization (contact_id INTEGER PRIMARY KEY NOT NULL,
                                                   company TEXT,
-												  title TEXT,
-												  PRIMARY KEY (contact_id))`
+												  title TEXT)`
 
 // CreateTableContactsRelations creates the table for storing a contact's relations (spouse, children, etc.)
 const CreateTableContactsRelations = `
-CREATE TABLE IF NOT EXISTS contacts_relations (id INTEGER NOT NULL,
+CREATE TABLE IF NOT EXISTS contacts_relations (id INTEGER PRIMARY KEY NOT NULL,
                                                contact_id INTEGER NOT NULL,
 											   name TEXT,
-											   type TEXT,
-											   PRIMARY KEY (id))`
+											   type TEXT)`
 
 // CreateTableContactsPostalAddresses creates the table for storing a contact's postal addresses
 const CreateTableContactsPostalAddresses = `
-CREATE TABLE IF NOT EXISTS contacts_postal_addresses (id INTEGER NOT NULL,
+CREATE TABLE IF NOT EXISTS contacts_postal_addresses (id INTEGER PRIMARY KEY NOT NULL,
                                                       contact_id INTEGER NOT NULL,
 													  street TEXT,
 													  po_box TEXT,
@@ -133,30 +126,26 @@ CREATE TABLE IF NOT EXISTS contacts_postal_addresses (id INTEGER NOT NULL,
 													  post_code TEXT,
 													  country TEXT,
 													  type INTEGER,
-													  label TEXT,
-													  PRIMARY KEY(id))`
+													  label TEXT)`
 
 // CreateTableContactsWebsites creates the table for storing a contact's websites
 const CreateTableContactsWebsites = `
-CREATE TABLE IF NOT EXISTS contacts_websites (id INTEGER NOT NULL,
+CREATE TABLE IF NOT EXISTS contacts_websites (id INTEGER PRIMARY KEY NOT NULL,
                                               contact_id INTEGER NOT NULL,
 											  address TEXT,
-											  type TEXT,
-											  PRIMARY KEY (id))`
+											  type TEXT)`
 
 // CreateTableContactsEvents creates the table for storing a contact's events
 const CreateTableContactsEvents = `
-CREATE TABLE IF NOT EXISTS contacts_events (id INTEGER NOT NULL,
+CREATE TABLE IF NOT EXISTS contacts_events (id INTEGER PRIMARY KEY NOT NULL,
                                             contact_id INTEGER NOT NULL,
 											start_date TEXT,
-											type TEXT,
-											PRIMARY KEY (id))`
+											type TEXT)`
 
 // CreateTableContactsPhoto creates the table for storing a contact's photo
 const CreateTableContactsPhoto = `
-CREATE TABLE IF NOT EXISTS contacts_photo (contact_id INTEGER NOT NULL,
-                                           photo BLOB NOT NULL,
-										   PRIMARY KEY (contact_id))`
+CREATE TABLE IF NOT EXISTS contacts_photo (contact_id INTEGER PRIMARY KEY NOT NULL,
+                                           photo BLOB NOT NULL)`
 
 // NewSQLiteDB returns a NewtonDB instance that is backed by an SQLiteDB stored
 // in a file.
