@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/jmoiron/sqlx"
 )
 
 type newtonFunc struct {
@@ -82,4 +84,17 @@ func NewtonErr(err error) error {
 
 func logErr(err error) {
 	log.Print(err)
+}
+
+type errExecer struct {
+	tx  *sqlx.Tx
+	err error
+}
+
+func (ee *errExecer) exec(query string, args ...interface{}) {
+	if ee.err != nil {
+		return
+	}
+
+	_, ee.err = ee.tx.Exec(query, args...)
 }

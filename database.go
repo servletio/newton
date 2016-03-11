@@ -33,7 +33,8 @@ type NewtonDB interface {
 // InitDB initializes the database that backs the API
 func InitDB(connectInfo string) error {
 	var err error
-	gDatabase, err = NewMariaDB(connectInfo)
+	// gDatabase, err = NewMariaDB(connectInfo)
+	gDatabase, err = NewSQLiteDB(connectInfo)
 	return err
 }
 

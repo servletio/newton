@@ -7,13 +7,156 @@ import (
 
 	"github.com/Masterminds/squirrel"
 	"github.com/jmoiron/sqlx"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
-const createSQLiteTableBookmarks = `
-CREATE TABLE IF NOT EXISTS bookmarks (id INTEGER NOT NULL PRIMARY KEY,
+// DropAllMariaDBTables is just useful when testing
+const DropAllMariaDBTables = `
+DROP TABLE bookmarks,
+           contacts,
+		   contacts_name,
+		   contacts_emails,
+		   contacts_events,
+		   ontacts_im_accounts,
+		   contacts_organization,
+		   contacts_phones,
+		   contacts_photo,
+		   contacts_postal_addresses,
+		   contacts_relations,
+		   contacts_websites,
+		   database_version,
+		   essions,
+		   users`
+
+// CreateTableDatabaseVersion is the statement to create a table that tracks the current schema version
+const CreateTableDatabaseVersion = `
+CREATE TABLE IF NOT EXISTS database_version (id INTEGER PRIMARY KEY NOT NULL,
+                                             version INT NOT NULL DEFAULT 0)`
+
+// CreateTableBookmarks is the statement to create the bookmarks table
+const CreateTableBookmarks = `
+CREATE TABLE IF NOT EXISTS bookmarks (id INTEGER PRIMARY KEY,
                                       url TEXT NOT NULL,
-									  title TEXT,
+									  title TEXT NOT NULL DEFAULT "title",
 									  owner_id INTEGER NOT NULL)`
+
+// CreateTableUsers is the statement to create the users table
+const CreateTableUsers = `
+CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY NOT NULL,
+                                  username TEXT NOT NULL,
+								  full_name TEXT NOT NULL,
+								  password TEXT NOT NULL)`
+
+// CreateTableSessions is the statement to create the sessions table
+const CreateTableSessions = `
+CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY NOT NULL,
+                                     access_token TEXT NOT NULL,
+									 user_id INTEGER NOT NULL,
+									 creation_date TIMESTAMP NOT NULL)`
+
+// CreateTableContacts is the statement to create the contacts table
+const CreateTableContacts = `
+CREATE TABLE IF NOT EXISTS contacts (id INTEGER NOT NULL,
+	                                 nickname TEXT,
+									 note TEXT,
+                                     owner_id INTEGER NOT NULL,
+									 PRIMARY KEY (id))`
+
+// CreateTableContactsName is the statement to create the table for storing a contact's name
+const CreateTableContactsName = `
+CREATE TABLE IF NOT EXISTS contacts_name (contact_id INTEGER NOT NULL,
+                                          display_name TEXT,
+										  prefix TEXT,
+										  given_name TEXT,
+										  middle_name TEXT,
+										  family_name TEXT,
+										  suffix TEXT,
+										  phonetic_given_name TEXT,
+										  phonetic_middle_name TEXT,
+										  phonetic_family_name TEXT,
+										  PRIMARY KEY (contact_id))`
+
+// CreateTableContactsEmails creates the table for storing a contact's emails
+const CreateTableContactsEmails = `
+CREATE TABLE IF NOT EXISTS contacts_emails (id INTEGER NOT NULL,
+                                            contact_id INTEGER NOT NULL,
+											address TEXT,
+											type INTEGER,
+											label TEXT,
+											PRIMARY KEY (id))`
+
+// CreateTableContactsPhones creates the table for storing a contact's phone numbers
+const CreateTableContactsPhones = `
+CREATE TABLE IF NOT EXISTS contacts_phones (id INTEGER NOT NULL,
+                                            contact_id INTEGER NOT NULL,
+											number TEXT,
+											type INTEGER,
+											label TEXT,
+											PRIMARY KEY (id))`
+
+// CreateTableContactsIMAccounts creates the table for storing a contact's IM handles
+const CreateTableContactsIMAccounts = `
+CREATE TABLE IF NOT EXISTS contacts_im_accounts (id INTEGER NOT NULL,
+                                                 contact_id INTEGER NOT NULL,
+												 handle TEXT,
+												 type INTEGER,
+												 label TEXT,
+												 protocol INTEGER,
+												 custom_protocol TEXT,
+												 PRIMARY KEY (id))`
+
+// CreateTableContactsOrganization creates the table for storing a contact's organization/association details
+const CreateTableContactsOrganization = `
+CREATE TABLE IF NOT EXISTS contacts_organization (contact_id INTEGER NOT NULL,
+                                                  company TEXT,
+												  title TEXT,
+												  PRIMARY KEY (contact_id))`
+
+// CreateTableContactsRelations creates the table for storing a contact's relations (spouse, children, etc.)
+const CreateTableContactsRelations = `
+CREATE TABLE IF NOT EXISTS contacts_relations (id INTEGER NOT NULL,
+                                               contact_id INTEGER NOT NULL,
+											   name TEXT,
+											   type TEXT,
+											   PRIMARY KEY (id))`
+
+// CreateTableContactsPostalAddresses creates the table for storing a contact's postal addresses
+const CreateTableContactsPostalAddresses = `
+CREATE TABLE IF NOT EXISTS contacts_postal_addresses (id INTEGER NOT NULL,
+                                                      contact_id INTEGER NOT NULL,
+													  street TEXT,
+													  po_box TEXT,
+													  neighborhood TEXT,
+													  city TEXT,
+													  region TEXT,
+													  post_code TEXT,
+													  country TEXT,
+													  type INTEGER,
+													  label TEXT,
+													  PRIMARY KEY(id))`
+
+// CreateTableContactsWebsites creates the table for storing a contact's websites
+const CreateTableContactsWebsites = `
+CREATE TABLE IF NOT EXISTS contacts_websites (id INTEGER NOT NULL,
+                                              contact_id INTEGER NOT NULL,
+											  address TEXT,
+											  type TEXT,
+											  PRIMARY KEY (id))`
+
+// CreateTableContactsEvents creates the table for storing a contact's events
+const CreateTableContactsEvents = `
+CREATE TABLE IF NOT EXISTS contacts_events (id INTEGER NOT NULL,
+                                            contact_id INTEGER NOT NULL,
+											start_date TEXT,
+											type TEXT,
+											PRIMARY KEY (id))`
+
+// CreateTableContactsPhoto creates the table for storing a contact's photo
+const CreateTableContactsPhoto = `
+CREATE TABLE IF NOT EXISTS contacts_photo (contact_id INTEGER NOT NULL,
+                                           photo BLOB NOT NULL,
+										   PRIMARY KEY (contact_id))`
 
 // NewSQLiteDB returns a NewtonDB instance that is backed by an SQLiteDB stored
 // in a file.
@@ -38,6 +181,37 @@ func NewSQLiteDB(dbPath string) (NewtonDB, error) {
 }
 
 func updateSQLiteDBVersion(sdb *SQLiteNewtonDB) error {
+	// make sure the version table exists
+	_, err := sdb.db.Exec(CreateTableDatabaseVersion)
+	if err != nil {
+		return err
+	}
+
+	var version int
+	err = sdb.db.QueryRow("SELECT version FROM database_version LIMIT 1").Scan(&version)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// no problem, this is just our first run
+			_, err = sdb.db.Exec("INSERT INTO database_version (version) VALUES (0)")
+			if err != nil {
+				return err
+			}
+			version = 0
+		} else {
+			return fmt.Errorf("unable to check sqlitedb version - %v", err)
+		}
+	}
+
+	switch version {
+	case 0:
+		err = migrateSQLiteDBFrom0To1(sdb)
+	case 1:
+	}
+
+	if err != nil {
+		return fmt.Errorf("error migrating mariadb schema - %v", err)
+	}
+
 	return nil
 }
 
@@ -46,9 +220,47 @@ type SQLiteNewtonDB struct {
 	db *sqlx.DB
 }
 
+func migrateSQLiteDBFrom0To1(sdb *SQLiteNewtonDB) error {
+	tx, err := sdb.db.Beginx()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// create all our tables
+	creator := errExecer{tx: tx}
+	creator.exec(CreateTableBookmarks)
+	creator.exec(CreateTableUsers)
+	creator.exec(CreateTableSessions)
+	creator.exec(CreateTableContacts)
+	creator.exec(CreateTableContactsName)
+	creator.exec(CreateTableContactsEmails)
+	creator.exec(CreateTableContactsPhones)
+	creator.exec(CreateTableContactsIMAccounts)
+	creator.exec(CreateTableContactsOrganization)
+	creator.exec(CreateTableContactsRelations)
+	creator.exec(CreateTableContactsPostalAddresses)
+	creator.exec(CreateTableContactsWebsites)
+	creator.exec(CreateTableContactsEvents)
+	creator.exec(CreateTableContactsPhoto)
+
+	if creator.err != nil {
+		return creator.err
+	}
+
+	// update the version
+	_, err = tx.Exec("UPDATE database_version SET version=1")
+	if err != nil {
+		return err
+	}
+	err = tx.Commit()
+
+	return err
+}
+
 // Bookmark ...
 func (sdb *SQLiteNewtonDB) Bookmark(bookmarkID, ownerID int64) (*Bookmark, error) {
-	const selectSQL = `SELECT id, url title, owner_id FROM bookmarks WHERE id=? AND owner_id=?`
+	const selectSQL = `SELECT id, url, title, owner_id FROM bookmarks WHERE id=? AND owner_id=?`
 	bookmark := &Bookmark{}
 	err := sdb.db.QueryRowx(selectSQL, bookmarkID, ownerID).StructScan(bookmark)
 	if err != nil {
@@ -596,8 +808,8 @@ func (sdb *SQLiteNewtonDB) SetContactPhoto(contactID int64, photo []byte) error 
 	}
 
 	if photo != nil {
-		const insertSQL = `INSERT INTO contacts_photo (contact_id, photo) VALUES (?, ?) ON DUPLICATE KEY UPDATE photo=?`
-		_, err = sdb.db.Exec(insertSQL, contactID, photo, photo)
+		const insertSQL = `INSERT OR REPLACE INTO contacts_photo (contact_id, photo) VALUES (?, ?)`
+		_, err = sdb.db.Exec(insertSQL, contactID, photo)
 		return err
 	}
 

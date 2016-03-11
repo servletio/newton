@@ -12,7 +12,7 @@ import (
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 
-	dbConnect := os.Getenv("SQL_DB")
+	dbConnect := os.Getenv("SQLITE_DB")
 	if dbConnect == "" {
 		log.Fatal("You need to specify a string for connecting to the SQL db")
 	}
