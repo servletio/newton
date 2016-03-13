@@ -147,6 +147,14 @@ const CreateTableContactsPhoto = `
 CREATE TABLE IF NOT EXISTS contacts_photo (contact_id INTEGER PRIMARY KEY NOT NULL,
                                            photo BLOB NOT NULL)`
 
+// CreateTableLocationRecords creates the table for storing a user's location records
+const CreateTableLocationRecords = `
+CREATE TABLE IF NOT EXISTS location_records (timestamp INTEGER NOT NULL,
+											latitude REAL NOT NULL,
+											longitude REAL NOT NULL,
+											owner_id INTEGER NOT NULL,
+											PRIMARY KEY (timestamp, owner_id))`
+
 // NewSQLiteDB returns a NewtonDB instance that is backed by an SQLiteDB stored
 // in a file.
 func NewSQLiteDB(dbPath string) (NewtonDB, error) {
@@ -291,17 +299,11 @@ func (sdb *SQLiteNewtonDB) Bookmarks(ownerID int64, pageSize int, page int) ([]*
 	if err != nil {
 		return nil, err
 	}
-	rows, err := sdb.db.Queryx(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
 
 	bookmarks := make([]*Bookmark, 0, 0)
-	for rows.Next() {
-		b := &Bookmark{}
-		rows.StructScan(b)
-		bookmarks = append(bookmarks, b)
+	err = sdb.db.Select(&bookmarks, query, args...)
+	if err != nil {
+		return nil, NewtonErr(err)
 	}
 
 	return bookmarks, nil
@@ -595,17 +597,9 @@ func (sdb *SQLiteNewtonDB) Contact(contactID, ownerID int64) (*Contact, error) {
 	SELECT address, type, label
 	FROM contacts_emails
 	WHERE contact_id=?`
-	rows, err := sdb.db.Queryx(emailsSQL, contact.ID)
+	err = sdb.db.Select(&contact.Emails, emailsSQL, contact.ID)
 	if err != nil {
 		return nil, NewtonErr(err)
-	}
-	for rows.Next() {
-		email := &Email{}
-		err = rows.StructScan(email)
-		if err != nil {
-			return nil, NewtonErr(err)
-		}
-		contact.Emails = append(contact.Emails, email)
 	}
 
 	// get the phone numbers
@@ -613,17 +607,9 @@ func (sdb *SQLiteNewtonDB) Contact(contactID, ownerID int64) (*Contact, error) {
 	SELECT number, type
 	FROM contacts_phones
 	WHERE contact_id=?`
-	rows, err = sdb.db.Queryx(phonesSQL, contact.ID)
+	err = sdb.db.Select(&contact.Phones, phonesSQL, contact.ID)
 	if err != nil {
 		return nil, NewtonErr(err)
-	}
-	for rows.Next() {
-		phone := &Phone{}
-		err = rows.StructScan(phone)
-		if err != nil {
-			return nil, NewtonErr(err)
-		}
-		contact.Phones = append(contact.Phones, phone)
 	}
 
 	// get the IM accounts
@@ -631,17 +617,9 @@ func (sdb *SQLiteNewtonDB) Contact(contactID, ownerID int64) (*Contact, error) {
 	SELECT handle, type, label, protocol, custom_protocol
 	FROM contacts_im_accounts
 	WHERE contact_id=?`
-	rows, err = sdb.db.Queryx(imAccountsSQL, contact.ID)
+	err = sdb.db.Select(&contact.IMAccounts, imAccountsSQL, contact.ID)
 	if err != nil {
 		return nil, NewtonErr(err)
-	}
-	for rows.Next() {
-		account := &IMAccount{}
-		err = rows.StructScan(account)
-		if err != nil {
-			return nil, NewtonErr(err)
-		}
-		contact.IMAccounts = append(contact.IMAccounts, account)
 	}
 
 	// retrieve any organization details
@@ -650,7 +628,7 @@ func (sdb *SQLiteNewtonDB) Contact(contactID, ownerID int64) (*Contact, error) {
 	FROM contacts_organization
 	WHERE contact_id=?`
 	org := &Organization{}
-	err = sdb.db.QueryRowx(orgSQL, contact.ID).StructScan(org)
+	err = sdb.db.Get(org, orgSQL, contact.ID)
 	switch err {
 	case nil:
 		contact.Org = org
@@ -662,62 +640,30 @@ func (sdb *SQLiteNewtonDB) Contact(contactID, ownerID int64) (*Contact, error) {
 
 	// retrieve the relations
 	const relationsSQL = `SELECT name, type FROM contacts_relations WHERE contact_id=?`
-	rows, err = sdb.db.Queryx(relationsSQL, contact.ID)
+	err = sdb.db.Select(&contact.Relations, relationsSQL, contact.ID)
 	if err != nil {
 		return nil, NewtonErr(err)
-	}
-	for rows.Next() {
-		relation := &Relation{}
-		err = rows.StructScan(relation)
-		if err != nil {
-			return nil, NewtonErr(err)
-		}
-		contact.Relations = append(contact.Relations, relation)
 	}
 
 	// retrieve postal addresses
 	const postalsSQL = `SELECT street, po_box, neighborhood, city, region, post_code, country, type FROM contacts_postal_addresses WHERE contact_id=?`
-	rows, err = sdb.db.Queryx(postalsSQL, contact.ID)
+	err = sdb.db.Select(&contact.PostalAddresses, postalsSQL, contact.ID)
 	if err != nil {
 		return nil, NewtonErr(err)
-	}
-	for rows.Next() {
-		postal := &PostalAddress{}
-		err = rows.StructScan(postal)
-		if err != nil {
-			return nil, NewtonErr(err)
-		}
-		contact.PostalAddresses = append(contact.PostalAddresses, postal)
 	}
 
 	// websites
 	const sitesSQL = `SELECT address FROM contacts_websites WHERE contact_id=?`
-	rows, err = sdb.db.Queryx(sitesSQL, contact.ID)
+	err = sdb.db.Select(&contact.Websites, sitesSQL, contact.ID)
 	if err != nil {
 		return nil, NewtonErr(err)
-	}
-	for rows.Next() {
-		var site string
-		err = rows.Scan(&site)
-		if err != nil {
-			return nil, NewtonErr(err)
-		}
-		contact.Websites = append(contact.Websites, site)
 	}
 
 	// events
 	const eventsSQL = `SELECT start_date, type FROM contacts_events WHERE contact_id=?`
-	rows, err = sdb.db.Queryx(eventsSQL, contact.ID)
+	err = sdb.db.Select(&contact.Events, eventsSQL, contact.ID)
 	if err != nil {
 		return nil, NewtonErr(err)
-	}
-	for rows.Next() {
-		event := &Event{}
-		err = rows.StructScan(event)
-		if err != nil {
-			return nil, NewtonErr(err)
-		}
-		contact.Events = append(contact.Events, event)
 	}
 
 	return contact, nil
@@ -827,4 +773,42 @@ func (sdb *SQLiteNewtonDB) ContactOwner(contactID int64) (int64, error) {
 	var ownerID int64
 	err := sdb.db.QueryRow("SELECT owner_id FROM contacts WHERE id=?", contactID).Scan(&ownerID)
 	return ownerID, err
+}
+
+// AddLocationRecord ...
+func (sdb *SQLiteNewtonDB) AddLocationRecord(locRec *LocationRecord) error {
+	const insertSQL = `INSERT INTO location_records (timestamp, latitude, longitude, owner_id) VALUES (:timestamp, :latitude, :longitude, :owner_id)`
+	_, err := sqlx.NamedExec(sdb.db, insertSQL, locRec)
+	return err
+}
+
+// LocationRecords ...
+func (sdb *SQLiteNewtonDB) LocationRecords(ownerID, since, until int64, limit uint64, ascending bool) ([]LocationRecord, error) {
+	builder := squirrel.Select("timestamp, latitude, longitude, ownerID").From("location_records")
+	builder = builder.Where(squirrel.Eq{"owner_id": ownerID})
+	if ascending {
+		builder = builder.OrderBy("timestamp ASC")
+	} else {
+		builder = builder.OrderBy("timestamp DESC")
+	}
+	if limit > 0 {
+		builder = builder.Limit(limit)
+	}
+	if since != -1 {
+		builder = builder.Where(squirrel.Expr("timestamp > ?", since))
+	}
+	if until != -1 {
+		builder = builder.Where(squirrel.Expr("timestamp < ?", until))
+	}
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return nil, err
+	}
+	records := []LocationRecord{}
+	err = sdb.db.Select(&records, query, args...)
+	if err != nil {
+		return nil, NewtonErr(err)
+	}
+
+	return records, nil
 }

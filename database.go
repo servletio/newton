@@ -28,6 +28,8 @@ type NewtonDB interface {
 	SetContactPhoto(contactID int64, photo []byte) error
 	ContactPhoto(contactID int64) ([]byte, error)
 	ContactOwner(contactID int64) (int64, error)
+
+	AddLocationRecord(locRec *LocationRecord) error
 }
 
 // InitDB initializes the database that backs the API

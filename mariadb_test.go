@@ -384,6 +384,29 @@ func TestRetrieveContact(t *testing.T) {
 		*contact.Org.Title != "Assistant Manager" {
 		t.Fatal("organization not loaded properly")
 	}
+
+	if contact.Websites == nil {
+		t.Fatal("no websites retrieved")
+	}
+	if len(contact.Websites) != 2 {
+		t.Fatal("incorrect number of websites retrieved")
+	}
+	for _, site := range contact.Websites {
+		if site != "https://stricklandpropane.com" &&
+			site != "https://hillfamily.com/hank" {
+			t.Fatalf("unknown website retrieved")
+		}
+	}
+
+	if contact.Events == nil {
+		t.Fatal("no events retrieved")
+	}
+	if contact.Events[0].StartDate != "April 19, 1957" {
+		t.Fatalf("event start date is incorrect. found: %v", contact.Events[0].StartDate)
+	}
+	if contact.Events[0].Type != EventTypeBirthday {
+		t.Fatal("event type is incorrect")
+	}
 }
 
 func TestSetContactPhoto(t *testing.T) {
@@ -413,4 +436,8 @@ func TestSetContactPhoto(t *testing.T) {
 	if retrievedData != nil {
 		t.Fatal("retrieved image should be nil after deletion")
 	}
+}
+
+func TestCreateLocationRecord(t *testing.T) {
+
 }

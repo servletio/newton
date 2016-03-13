@@ -57,6 +57,8 @@ func installEndpoints(router *mux.Router) {
 	router.Handle("/contacts/{contact_id}", NewtonFunc(DeleteContactHandler)).Methods("DELETE")
 	router.Handle("/contacts/{contact_id}/photo", NewtonFunc(GetContactPhotoHandler)).Methods("GET")
 	router.Handle("/contacts/{contact_id}/photo", NewtonFunc(DeleteContactPhotoHandler)).Methods("DELETE")
+
+	router.Handle("/locations", NewtonFunc(CreateLocationEntry)).Methods("POST")
 }
 
 func corsHandler(w http.ResponseWriter, r *http.Request) {
